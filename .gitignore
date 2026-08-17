@@ -1,0 +1,43 @@
+# Dependencias
+node_modules/
+.pnpm-store/
+
+# Builds (se generan con pnpm build)
+dist/
+*.tsbuildinfo
+
+# ── BASE DE DATOS: nunca subir ──────────────────────────────────────────────
+# Contiene datos reales del restaurante: ventas, facturas con NIF de clientes,
+# PIN del personal. Además de ser información sensible, un .sqlite en el repo
+# provoca conflictos irresolubles cada vez que dos máquinas lo modifican.
+data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+backups/
+
+# Variables de entorno (credenciales, claves)
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editores
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*~
+
+# Temporales de pruebas
+impresora-recibido.bin
+*.tmp

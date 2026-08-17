@@ -1,0 +1,22 @@
+{
+  "name": "printer-worker",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/worker.js",
+  "scripts": {
+    "dev": "tsx watch src/worker.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/worker.js"
+  },
+  "dependencies": {
+    "@comandas/shared-types": "workspace:*",
+    "better-sqlite3": "^11.3.0",
+    "socket.io-client": "^4.7.5"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^20.14.15",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4"
+  }
+}

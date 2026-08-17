@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#1a1a2e" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <title>Comandas</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", async () => {
+          const reg = await navigator.serviceWorker.register("/sw.js");
+          // Si aparece una versión nueva mientras la app está abierta,
+          // se activa y recarga sola: nadie se queda con una build vieja.
+          reg.addEventListener("updatefound", () => {
+            const nuevo = reg.installing;
+            if (!nuevo) return;
+            nuevo.addEventListener("statechange", () => {
+              if (nuevo.state === "activated") window.location.reload();
+            });
+          });
+          // Comprobar actualizaciones cada 60s (el Raspberry puede haberse
+          // actualizado a media tarde sin que nadie cierre la app).
+          setInterval(() => reg.update(), 60000);
+        });
+      }
+    </script>
+  </body>
+</html>

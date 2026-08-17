@@ -1,0 +1,16 @@
+{
+  "name": "comandas-app",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "start:all": "node scripts/dev.mjs --fake",
+    "dev:raspberry": "pnpm --filter raspberry-backend dev",
+    "build": "pnpm -r build"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  },
+  "engines": {
+    "node": ">=20 <23"
+  }
+}
