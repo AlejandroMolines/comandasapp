@@ -6,6 +6,7 @@ import { createServer } from "node:http";
 import path from "node:path";
 import { Server as SocketServer } from "socket.io";
 import { secretosIguales, secretoFirma } from "./lib/secretos.js";
+import { iniciarPulso } from "./nube/pulso.js";
 import { ajustesRouter } from "./modules/ajustes/routes.js";
 import { authRouter } from "./modules/auth/routes.js";
 import { cartaRouter } from "./modules/carta/routes.js";
@@ -130,5 +131,6 @@ if (process.env.NODE_ENV !== "test") {
   const { httpServer } = crearServidor();
   httpServer.listen(PORT, () => {
     console.log(`[raspberry-backend] escuchando en http://localhost:${PORT}`);
+    iniciarPulso();
   });
 }
