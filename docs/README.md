@@ -16,6 +16,7 @@
 | [MODELO-DATOS.md](./MODELO-DATOS.md) | Las tablas y por qué están así |
 | [../FACTURACION.md](../FACTURACION.md) | Facturas a empresas, IVA y Verifactu |
 | [../CAJA-E-INFORMES.md](../CAJA-E-INFORMES.md) | Caja inicial fija e informes en Excel |
+| [MANTENIMIENTO.md](./MANTENIMIENTO.md) | Copias, systemd y cuidados del Raspberry |
 
 ## Qué es esto en dos párrafos
 
@@ -86,9 +87,9 @@ IVA desglosado, informes en Excel, modo claro/oscuro, y funcionamiento offline.
 
 1. **Backup automático de la base de datos.** Es el riesgo real: el día que muera
    la tarjeta SD se pierde el histórico. Barato de hacer y no está.
-2. **Seguridad para producción**: JWT firmado y bcrypt. Ahora el token es base64
-   sin firma y las contraseñas van en claro. Aceptable en LAN cerrada, no si se
-   expone.
+2. **No exponer el Raspberry a internet.** El token ya va firmado (HMAC) y los
+   PIN y contraseñas hasheados (scrypt), y el rol se comprueba en la base. Eso
+   cubre la LAN del local; no convierte el Pi en un servidor público.
 3. **Verifactu** (obligatorio en 2027): hash encadenado, QR y registro de eventos.
    Ver [FACTURACION.md](../FACTURACION.md).
 4. **KDS**: la pantalla de cocina. El driver del worker ya existe.

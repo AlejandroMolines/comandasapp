@@ -45,8 +45,26 @@ try {
   // coherente aunque haya escrituras a la vez. Copiar el archivo a mano puede
   // dar una base de datos corrupta si pilla una transacción a medias.
   await db.backup(destino);
+  const copia = new Database(destino, { readonly: true });
+  const check = copia.prepare("PRAGMA integrity_check").get();
+  copia.close();
+  if (check.integrity_check !== "ok") {
+    log(`ERROR: el backup no pasa integrity_check (${check.integrity_check})`);
+    process.exitCode = 1;
+  }
   const mb = (fs.statSync(destino).size / 1024 / 1024).toFixed(1);
   log(`Backup hecho: ${destino} (${mb} MB)`);
+
+  // Sin esta clave, restaurar la BD deja las sesiones inservibles y hay que
+  // volver a entrar, pero además un backup de la BD sin el secreto no permite
+  // comprobar que los tokens antiguos siguen siendo los de esta máquina.
+  const secreto = path.join(path.dirname(path.resolve(DB)), "token.secret");
+  if (fs.existsSync(secreto)) {
+    const destinoSecreto = path.join(DESTINO, `token-${fecha}.secret`);
+    fs.copyFileSync(secreto, destinoSecreto);
+    fs.chmodSync(destinoSecreto, 0o600);
+    log(`Clave de sesión copiada junto al backup (token-${fecha}.secret)`);
+  }
 } catch (e) {
   log(`ERROR en el backup: ${e.message}`);
   process.exitCode = 1;
@@ -61,6 +79,9 @@ try {
     .reverse();
   for (const viejo of previos.slice(BACKUPS_A_GUARDAR)) {
     fs.unlinkSync(path.join(DESTINO, viejo));
+    const secretoViejo = viejo.replace(/^comandas-/, "token-").replace(/\.sqlite$/, ".secret");
+    const rutaSecreto = path.join(DESTINO, secretoViejo);
+    if (fs.existsSync(rutaSecreto)) fs.unlinkSync(rutaSecreto);
     log(`Backup antiguo borrado: ${viejo}`);
   }
 } catch (e) {

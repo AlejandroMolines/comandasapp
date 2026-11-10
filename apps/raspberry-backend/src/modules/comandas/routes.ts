@@ -2,8 +2,9 @@ import { Router } from "express";
 import { v4 as uuid } from "uuid";
 import { z } from "zod";
 import { db } from "../../db/connection.js";
+import { importeDescuento, r2, resumenCuenta } from "../../lib/cuenta.js";
 import { requireAuth } from "../../middleware/auth.js";
-import { crearRonda } from "./service.js";
+import { anularLinea, aplicarDescuento, cerrarSiSaldada, crearRonda, ErrorComanda } from "./service.js";
 
 export const comandasRouter = Router();
 const RESTAURANTE_ID = process.env.RESTAURANTE_ID ?? "restaurante-demo";
@@ -69,16 +70,27 @@ comandasRouter.get("/abiertas", requireAuth, (_req, res) => {
   const filas = db
     .prepare(
       `SELECT c.id, c.mesa_id, c.tipo, c.creado_en, u.nombre AS camarero,
-              COALESCE(SUM(l.cantidad * l.precio_unitario), 0) AS total,
-              COALESCE(SUM(l.cantidad), 0) AS unidades
+              COALESCE(SUM(CASE WHEN COALESCE(l.anulada, 0) = 0 THEN l.cantidad * l.precio_unitario ELSE 0 END), 0) AS bruto,
+              COALESCE(SUM(CASE WHEN COALESCE(l.anulada, 0) = 0 THEN l.cantidad ELSE 0 END), 0) AS unidades,
+              c.descuento_tipo, c.descuento_valor
          FROM comandas c
          JOIN usuarios u ON u.id = c.camarero_id
          LEFT JOIN lineas_comanda l ON l.comanda_id = c.id
         WHERE c.restaurante_id = ? AND c.estado NOT IN ('cerrada','cancelada')
         GROUP BY c.id`
     )
-    .all(RESTAURANTE_ID);
-  res.json(filas);
+    .all(RESTAURANTE_ID) as {
+      id: string;
+      bruto: number;
+      descuento_tipo: string | null;
+      descuento_valor: number;
+    }[];
+  res.json(
+    filas.map((f) => ({
+      ...f,
+      total: r2(f.bruto - importeDescuento(f.bruto, f.descuento_tipo, f.descuento_valor)),
+    }))
+  );
 });
 
 /**
@@ -137,15 +149,21 @@ comandasRouter.post("/:id/mover", requireAuth, (req, res) => {
         .run(comandaDestino.id, origen.id);
       db.prepare(`UPDATE comandas SET estado = 'cancelada', cerrado_en = ? WHERE id = ?`)
         .run(ahora, origen.id);
-      db.prepare(`UPDATE mesas SET estado = 'ocupada' WHERE id = ?`).run(mesaDestinoId);
       modo = "unida";
       comandaFinalId = comandaDestino.id;
     } else {
       // MOVER: la comanda cambia de mesa.
       db.prepare(`UPDATE comandas SET mesa_id = ? WHERE id = ?`).run(mesaDestinoId, origen.id);
-      db.prepare(`UPDATE mesas SET estado = 'ocupada' WHERE id = ?`).run(mesaDestinoId);
       modo = "movida";
     }
+    // Ocupada solo si de verdad queda algo pedido. Una comanda vacía
+    // (abierta y abandonada) no debe pintar la mesa destino en rojo.
+    const quedan = db
+      .prepare(
+        `SELECT 1 FROM lineas_comanda WHERE comanda_id = ? AND COALESCE(anulada, 0) = 0 LIMIT 1`
+      )
+      .get(comandaFinalId);
+    db.prepare(`UPDATE mesas SET estado = ? WHERE id = ?`).run(quedan ? "ocupada" : "libre", mesaDestinoId);
     // La mesa de origen queda libre en ambos casos.
     if (origen.mesa_id) {
       db.prepare(`UPDATE mesas SET estado = 'libre' WHERE id = ?`).run(origen.mesa_id);
@@ -169,16 +187,16 @@ comandasRouter.post("/:id/mover", requireAuth, (req, res) => {
 });
 
 comandasRouter.get("/:id", requireAuth, (req, res) => {
-  const comanda = db.prepare(`SELECT * FROM comandas WHERE id = ?`).get(req.params.id) as
-    | Record<string, unknown>
-    | undefined;
+  const comanda = db
+    .prepare(`SELECT * FROM comandas WHERE id = ? AND restaurante_id = ?`)
+    .get(req.params.id, RESTAURANTE_ID) as Record<string, unknown> | undefined;
   if (!comanda) return res.status(404).json({ error: "Comanda no encontrada" });
 
   // Con el nombre del producto ya resuelto: la PWA no tiene que cruzar la carta.
   const lineas = db
     .prepare(
       `SELECT l.id, l.cantidad, l.producto_id, l.precio_unitario, l.notas, l.estado,
-              l.enviado_en, p.nombre, p.tipo_iva
+              l.enviado_en, l.anulada, l.motivo_anulacion, p.nombre, p.tipo_iva
          FROM lineas_comanda l
          JOIN productos p ON p.id = l.producto_id
         WHERE l.comanda_id = ?
@@ -199,10 +217,8 @@ comandasRouter.get("/:id", requireAuth, (req, res) => {
     extras: extras.filter((e) => e.linea_id === l.id).map(({ nombre, precio }) => ({ nombre, precio })),
   }));
 
-  const total = Number(
-    lineas.reduce((a, l) => a + l.cantidad * l.precio_unitario, 0).toFixed(2)
-  );
-  res.json({ comanda, lineas: conExtras, total });
+  const cuenta = resumenCuenta(req.params.id);
+  res.json({ comanda, lineas: conExtras, ...cuenta });
 });
 
 const enviarRondaSchema = z.object({
@@ -210,8 +226,8 @@ const enviarRondaSchema = z.object({
     .array(
       z.object({
         productoId: z.string(),
-        cantidad: z.number().int().positive(),
-        notas: z.string().optional(),
+        cantidad: z.number().int().positive().max(99),
+        notas: z.string().max(240).optional(),
         // Extras aplicados a esta línea. Los que tengan precio > 0 se suman
         // al precio unitario; los de precio 0 son modificaciones.
         extraIds: z.array(z.string()).optional(),
@@ -220,6 +236,8 @@ const enviarRondaSchema = z.object({
     .min(1),
   // true (por defecto) = guardar e imprimir. false = solo guardar.
   imprimir: z.boolean().optional().default(true),
+  // Idempotencia: el cliente offline reenvía el mismo id si se cortó la respuesta.
+  rondaId: z.string().uuid().optional(),
 });
 
 // Enviar una ronda: crea las líneas, resuelve destinos y encola tickets.
@@ -227,7 +245,9 @@ comandasRouter.post("/:id/rondas", requireAuth, (req, res) => {
   const parsed = enviarRondaSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json(parsed.error.flatten());
 
-  const comanda = db.prepare(`SELECT id FROM comandas WHERE id = ?`).get(req.params.id);
+  const comanda = db
+    .prepare(`SELECT id FROM comandas WHERE id = ? AND restaurante_id = ?`)
+    .get(req.params.id, RESTAURANTE_ID);
   if (!comanda) return res.status(404).json({ error: "Comanda no encontrada" });
 
   try {
@@ -235,25 +255,89 @@ comandasRouter.post("/:id/rondas", requireAuth, (req, res) => {
       req.params.id,
       req.auth!.usuarioId,
       parsed.data.lineas,
-      parsed.data.imprimir
+      parsed.data.imprimir,
+      parsed.data.rondaId
     );
 
-    // Avisar en tiempo real a cocina/pantallas y al resto de dispositivos del restaurante.
     const io = req.app.get("io");
-    io?.to(RESTAURANTE_ID).emit("ronda:creada", {
-      comandaId: req.params.id,
-      rondaId: resultado.rondaId,
-      destinos: resultado.destinos,
-    });
-
-    if (resultado.avisosSinDestino.length > 0) {
-      io?.to(RESTAURANTE_ID).emit("alerta:producto_sin_destino", {
-        productos: resultado.avisosSinDestino,
+    if (!resultado.duplicada) {
+      io?.to(RESTAURANTE_ID).emit("ronda:creada", {
+        comandaId: req.params.id,
+        rondaId: resultado.rondaId,
+        destinos: resultado.destinos,
       });
+      if (resultado.avisosSinDestino.length > 0) {
+        io?.to(RESTAURANTE_ID).emit("alerta:producto_sin_destino", {
+          productos: resultado.avisosSinDestino,
+        });
+      }
     }
 
-    res.status(201).json(resultado);
+    res.status(resultado.duplicada ? 200 : 201).json(resultado);
   } catch (err) {
-    res.status(400).json({ error: (err as Error).message });
+    const status = err instanceof ErrorComanda ? err.status : 400;
+    res.status(status).json({ error: (err as Error).message });
+  }
+});
+
+comandasRouter.post("/:id/lineas/:lineaId/anular", requireAuth, (req, res) => {
+  const parsed = z
+    .object({
+      motivo: z.string().trim().min(2).max(80),
+      cantidad: z.number().int().positive().max(99).optional(),
+    })
+    .safeParse(req.body);
+  if (!parsed.success) return res.status(400).json(parsed.error.flatten());
+  try {
+    const resultado = anularLinea({
+      comandaId: req.params.id,
+      lineaId: req.params.lineaId,
+      camareroId: req.auth!.usuarioId,
+      motivo: parsed.data.motivo,
+      cantidad: parsed.data.cantidad,
+    });
+    const io = req.app.get("io");
+    io?.to(RESTAURANTE_ID).emit("comanda:actualizada", { comandaId: req.params.id });
+    res.json(resultado);
+  } catch (err) {
+    const status = err instanceof ErrorComanda ? err.status : 400;
+    res.status(status).json({ error: (err as Error).message });
+  }
+});
+
+comandasRouter.put("/:id/descuento", requireAuth, (req, res) => {
+  const parsed = z
+    .object({
+      tipo: z.enum(["porcentaje", "importe", "ninguno"]),
+      valor: z.number().nonnegative().default(0),
+      motivo: z.string().trim().max(80).optional(),
+    })
+    .safeParse(req.body);
+  if (!parsed.success) return res.status(400).json(parsed.error.flatten());
+  try {
+    const cuenta = aplicarDescuento(
+      req.params.id,
+      parsed.data.tipo,
+      parsed.data.valor,
+      parsed.data.motivo?.trim() || null
+    );
+    req.app.get("io")?.to(RESTAURANTE_ID).emit("comanda:actualizada", { comandaId: req.params.id });
+    res.json(cuenta);
+  } catch (err) {
+    const status = err instanceof ErrorComanda ? err.status : 400;
+    res.status(status).json({ error: (err as Error).message });
+  }
+});
+
+comandasRouter.post("/:id/cerrar", requireAuth, (req, res) => {
+  try {
+    const resultado = cerrarSiSaldada(req.params.id);
+    const io = req.app.get("io");
+    io?.to(RESTAURANTE_ID).emit("comanda:actualizada", { comandaId: req.params.id });
+    if (resultado.mesaId) io?.to(RESTAURANTE_ID).emit("mesa:liberada", { mesaId: resultado.mesaId });
+    res.json(resultado);
+  } catch (err) {
+    const status = err instanceof ErrorComanda ? err.status : 400;
+    res.status(status).json({ error: (err as Error).message });
   }
 });

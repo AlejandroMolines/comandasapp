@@ -1,6 +1,14 @@
 import { v4 as uuid } from "uuid";
 import { db } from "../../db/connection.js";
+import { importeDescuento, r2, resumenCuenta } from "../../lib/cuenta.js";
 import { getAjuste } from "../ajustes/routes.js";
+
+/** Error de negocio con el HTTP que debe devolver la ruta. */
+export class ErrorComanda extends Error {
+  constructor(message: string, public status = 400) {
+    super(message);
+  }
+}
 
 const RESTAURANTE_ID = process.env.RESTAURANTE_ID ?? "restaurante-demo";
 
@@ -82,17 +90,45 @@ export function crearRonda(
    * para apuntar algo sin molestar a cocina. Guardar es siempre seguro;
    * imprimir implica guardar, nunca al revés.
    */
-  imprimirRonda = true
+  imprimirRonda = true,
+  /** UUID del cliente. Si ya existe, no se duplica la ronda (reintento offline). */
+  rondaIdCliente?: string
 ) {
-  const rondaId = uuid();
+  if (rondaIdCliente) {
+    const ya = db
+      .prepare(`SELECT comanda_id FROM rondas WHERE id = ?`)
+      .get(rondaIdCliente) as { comanda_id: string } | undefined;
+    if (ya) {
+      if (ya.comanda_id !== comandaId) {
+        throw new ErrorComanda("Ese identificador de ronda pertenece a otra comanda", 409);
+      }
+      return {
+        rondaId: rondaIdCliente,
+        avisosSinDestino: [] as string[],
+        destinos: [] as string[],
+        impreso: false,
+        duplicada: true,
+      };
+    }
+  }
+
+  const rondaId = rondaIdCliente ?? uuid();
   const ahora = new Date().toISOString();
   const avisosSinDestino: string[] = [];
 
   // ¿Hay que imprimir esta comanda? Los pedidos para llevar se pueden
   // configurar para NO imprimirse (se registran solo para caja y conteo).
   const comanda = db
-    .prepare(`SELECT tipo, mesa_id FROM comandas WHERE id = ?`)
-    .get(comandaId) as { tipo: string; mesa_id: string | null } | undefined;
+    .prepare(`SELECT tipo, mesa_id, estado, restaurante_id FROM comandas WHERE id = ?`)
+    .get(comandaId) as
+    | { tipo: string; mesa_id: string | null; estado: string; restaurante_id: string }
+    | undefined;
+  if (!comanda || comanda.restaurante_id !== RESTAURANTE_ID) {
+    throw new ErrorComanda("Comanda no encontrada", 404);
+  }
+  if (comanda.estado === "cerrada" || comanda.estado === "cancelada") {
+    throw new ErrorComanda(`La comanda ya está ${comanda.estado}`, 409);
+  }
   // Se imprime solo si el camarero lo ha pedido Y el ajuste lo permite
   // (los pedidos para llevar pueden estar configurados para no imprimirse).
   const imprimir =
@@ -106,7 +142,9 @@ export function crearRonda(
        (id, comanda_id, ronda_id, producto_id, cantidad, precio_unitario, notas, estado, impresora_resuelta_id, enviado_en)
      VALUES (?, ?, ?, ?, ?, ?, ?, 'enviada', ?, ?)`
   );
-  const getPrecio = db.prepare(`SELECT precio FROM productos WHERE id = ?`);
+  const getPrecio = db.prepare(
+    `SELECT nombre, precio, disponible FROM productos WHERE id = ? AND restaurante_id = ?`
+  );
   const getExtra = db.prepare(`SELECT id, nombre, precio FROM extras WHERE id = ? AND restaurante_id = ?`);
   const insertLineaExtra = db.prepare(
     `INSERT INTO linea_extras (id, linea_id, extra_id, nombre, precio) VALUES (?, ?, ?, ?, ?)`
@@ -123,8 +161,11 @@ export function crearRonda(
     }
 
     for (const linea of lineas) {
-      const producto = getPrecio.get(linea.productoId) as { precio: number } | undefined;
-      if (!producto) throw new Error(`Producto ${linea.productoId} no existe`);
+      const producto = getPrecio.get(linea.productoId, RESTAURANTE_ID) as
+        | { nombre: string; precio: number; disponible: number }
+        | undefined;
+      if (!producto) throw new ErrorComanda(`Producto ${linea.productoId} no existe`);
+      if (!producto.disponible) throw new ErrorComanda(`${producto.nombre} está agotado`);
 
       const destinoId = resolverDestinoProducto(linea.productoId);
       const lineaId = uuid();
@@ -186,5 +227,199 @@ export function crearRonda(
 
   tx();
 
-  return { rondaId, avisosSinDestino, destinos: [...lineasPorDestino.keys()], impreso: imprimir };
+  return { rondaId, avisosSinDestino, destinos: [...lineasPorDestino.keys()], impreso: imprimir, duplicada: false };
+}
+
+/**
+ * Anula una línea ya enviada (entera o en parte). La fila no se borra:
+ * cocina ya pudo verla, y el histórico de ventas tiene que poder explicar
+ * por qué no se cobró. Si el plato se había imprimido, se encola un aviso
+ * de anulación al mismo destino.
+ */
+export function anularLinea(opts: {
+  comandaId: string;
+  lineaId: string;
+  camareroId: string;
+  motivo: string;
+  cantidad?: number;
+}) {
+  const comanda = db
+    .prepare(`SELECT id, estado, mesa_id, restaurante_id FROM comandas WHERE id = ?`)
+    .get(opts.comandaId) as
+    | { id: string; estado: string; mesa_id: string | null; restaurante_id: string }
+    | undefined;
+  if (!comanda || comanda.restaurante_id !== RESTAURANTE_ID) {
+    throw new ErrorComanda("Comanda no encontrada", 404);
+  }
+  if (comanda.estado === "cerrada" || comanda.estado === "cancelada") {
+    throw new ErrorComanda(`La comanda ya está ${comanda.estado}`, 409);
+  }
+
+  const linea = db
+    .prepare(`SELECT * FROM lineas_comanda WHERE id = ? AND comanda_id = ?`)
+    .get(opts.lineaId, opts.comandaId) as
+    | {
+        id: string;
+        comanda_id: string;
+        ronda_id: string;
+        producto_id: string;
+        cantidad: number;
+        precio_unitario: number;
+        notas: string | null;
+        impresora_resuelta_id: string | null;
+        enviado_en: string | null;
+        anulada: number;
+      }
+    | undefined;
+  if (!linea) throw new ErrorComanda("Línea no encontrada", 404);
+  if (linea.anulada) throw new ErrorComanda("Esa línea ya está anulada", 409);
+
+  const cantidad = opts.cantidad ?? linea.cantidad;
+  if (!Number.isInteger(cantidad) || cantidad < 1 || cantidad > linea.cantidad) {
+    throw new ErrorComanda("Cantidad a anular no válida");
+  }
+
+  const cuenta = resumenCuenta(opts.comandaId);
+  const nuevoBruto = r2(cuenta.bruto - cantidad * linea.precio_unitario);
+  const nuevoTotal = r2(Math.max(0, nuevoBruto - importeDescuento(nuevoBruto, cuenta.descuentoTipo, cuenta.descuentoValor)));
+  if (nuevoTotal + 0.01 < cuenta.pagado) {
+    throw new ErrorComanda("No se puede anular: ya se ha cobrado más de lo que quedaría en la cuenta");
+  }
+
+  const ahora = new Date().toISOString();
+  let lineaAnuladaId = linea.id;
+
+  const tx = db.transaction(() => {
+    if (cantidad === linea.cantidad) {
+      db.prepare(
+        `UPDATE lineas_comanda
+            SET anulada = 1, motivo_anulacion = ?, anulada_en = ?, anulada_por = ?, estado = 'anulada'
+          WHERE id = ?`
+      ).run(opts.motivo, ahora, opts.camareroId, linea.id);
+    } else {
+      db.prepare(`UPDATE lineas_comanda SET cantidad = ? WHERE id = ?`).run(linea.cantidad - cantidad, linea.id);
+      lineaAnuladaId = uuid();
+      db.prepare(
+        `INSERT INTO lineas_comanda
+           (id, comanda_id, ronda_id, producto_id, cantidad, precio_unitario, notas, estado,
+            impresora_resuelta_id, enviado_en, anulada, motivo_anulacion, anulada_en, anulada_por)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'anulada', ?, ?, 1, ?, ?, ?)`
+      ).run(
+        lineaAnuladaId,
+        linea.comanda_id,
+        linea.ronda_id,
+        linea.producto_id,
+        cantidad,
+        linea.precio_unitario,
+        linea.notas,
+        linea.impresora_resuelta_id,
+        linea.enviado_en,
+        opts.motivo,
+        ahora,
+        opts.camareroId
+      );
+      const extras = db
+        .prepare(`SELECT extra_id, nombre, precio FROM linea_extras WHERE linea_id = ?`)
+        .all(linea.id) as { extra_id: string | null; nombre: string; precio: number }[];
+      const ins = db.prepare(
+        `INSERT INTO linea_extras (id, linea_id, extra_id, nombre, precio) VALUES (?, ?, ?, ?, ?)`
+      );
+      for (const ex of extras) ins.run(uuid(), lineaAnuladaId, ex.extra_id, ex.nombre, ex.precio);
+    }
+
+    // Solo se avisa a cocina si el papel de esa ronda llegó a salir (o a encolarse).
+    if (linea.impresora_resuelta_id) {
+      const seImprimio = db
+        .prepare(
+          `SELECT 1 FROM log_impresion
+            WHERE ronda_id = ? AND punto_destino_id = ? AND COALESCE(es_anulacion, 0) = 0
+            LIMIT 1`
+        )
+        .get(linea.ronda_id, linea.impresora_resuelta_id);
+      if (seImprimio) {
+        db.prepare(
+          `INSERT INTO log_impresion
+             (id, ronda_id, punto_destino_id, estado, intentos, creado_en, es_anulacion, linea_anulada_id)
+           VALUES (?, ?, ?, 'pendiente', 0, ?, 1, ?)`
+        ).run(uuid(), linea.ronda_id, linea.impresora_resuelta_id, ahora, lineaAnuladaId);
+      }
+    }
+
+    const quedan = db
+      .prepare(
+        `SELECT 1 FROM lineas_comanda WHERE comanda_id = ? AND COALESCE(anulada, 0) = 0 LIMIT 1`
+      )
+      .get(opts.comandaId);
+    if (!quedan && comanda.mesa_id) {
+      db.prepare(`UPDATE mesas SET estado = 'libre' WHERE id = ?`).run(comanda.mesa_id);
+    }
+  });
+  tx();
+
+  return { lineaId: lineaAnuladaId, ...resumenCuenta(opts.comandaId) };
+}
+
+export function aplicarDescuento(
+  comandaId: string,
+  tipo: "porcentaje" | "importe" | "ninguno",
+  valor: number,
+  motivo: string | null
+) {
+  const comanda = db
+    .prepare(`SELECT estado, restaurante_id FROM comandas WHERE id = ?`)
+    .get(comandaId) as { estado: string; restaurante_id: string } | undefined;
+  if (!comanda || comanda.restaurante_id !== RESTAURANTE_ID) {
+    throw new ErrorComanda("Comanda no encontrada", 404);
+  }
+  if (comanda.estado === "cerrada" || comanda.estado === "cancelada") {
+    throw new ErrorComanda(`La comanda ya está ${comanda.estado}`, 409);
+  }
+  if (tipo === "porcentaje" && (valor <= 0 || valor > 100)) {
+    throw new ErrorComanda("El porcentaje tiene que estar entre 0 y 100");
+  }
+  if (tipo === "importe" && valor <= 0) {
+    throw new ErrorComanda("El importe del descuento no es válido");
+  }
+
+  if (tipo === "ninguno") {
+    db.prepare(
+      `UPDATE comandas SET descuento_tipo = NULL, descuento_valor = 0, descuento_motivo = NULL WHERE id = ?`
+    ).run(comandaId);
+    return resumenCuenta(comandaId);
+  }
+
+  const cuenta = resumenCuenta(comandaId);
+  const descuento = importeDescuento(cuenta.bruto, tipo, valor);
+  if (r2(cuenta.bruto - descuento) + 0.01 < cuenta.pagado) {
+    throw new ErrorComanda("El descuento dejaría la cuenta por debajo de lo ya cobrado");
+  }
+  db.prepare(
+    `UPDATE comandas SET descuento_tipo = ?, descuento_valor = ?, descuento_motivo = ? WHERE id = ?`
+  ).run(tipo, valor, motivo, comandaId);
+  return resumenCuenta(comandaId);
+}
+
+/** Cierra una comanda ya saldada (también la de importe 0, tras anularlo todo). */
+export function cerrarSiSaldada(comandaId: string) {
+  const comanda = db
+    .prepare(`SELECT estado, mesa_id, restaurante_id FROM comandas WHERE id = ?`)
+    .get(comandaId) as
+    | { estado: string; mesa_id: string | null; restaurante_id: string }
+    | undefined;
+  if (!comanda || comanda.restaurante_id !== RESTAURANTE_ID) {
+    throw new ErrorComanda("Comanda no encontrada", 404);
+  }
+  if (comanda.estado === "cerrada" || comanda.estado === "cancelada") {
+    throw new ErrorComanda(`La comanda ya está ${comanda.estado}`, 409);
+  }
+  const cuenta = resumenCuenta(comandaId);
+  if (cuenta.pendiente > 0.01) {
+    throw new ErrorComanda(`Quedan ${cuenta.pendiente.toFixed(2)} € por cobrar`);
+  }
+  const ahora = new Date().toISOString();
+  db.prepare(`UPDATE comandas SET estado = 'cerrada', cerrado_en = ? WHERE id = ?`).run(ahora, comandaId);
+  if (comanda.mesa_id) {
+    db.prepare(`UPDATE mesas SET estado = 'libre' WHERE id = ?`).run(comanda.mesa_id);
+  }
+  return { cerrada: true, mesaId: comanda.mesa_id };
 }

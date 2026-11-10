@@ -8,6 +8,25 @@ import { requireAuth, requireRole } from "../../middleware/auth.js";
 export const turnosRouter = Router();
 const RESTAURANTE_ID = process.env.RESTAURANTE_ID ?? "restaurante-demo";
 
+// Reparte el descuento de la comanda sobre cada línea viva, para que el
+// IVA y el importe de los informes coincidan con lo que de verdad se cobró.
+const FACTOR_DESCUENTO = `
+  CASE
+    WHEN c.descuento_tipo = 'porcentaje'
+      THEN 1.0 - MIN(COALESCE(c.descuento_valor, 0), 100) / 100.0
+    WHEN c.descuento_tipo = 'importe' AND (
+      SELECT COALESCE(SUM(l2.cantidad * l2.precio_unitario), 0) FROM lineas_comanda l2
+       WHERE l2.comanda_id = c.id AND COALESCE(l2.anulada, 0) = 0
+    ) > 0 THEN MAX(0.0, (
+      SELECT SUM(l2.cantidad * l2.precio_unitario) FROM lineas_comanda l2
+       WHERE l2.comanda_id = c.id AND COALESCE(l2.anulada, 0) = 0
+    ) - c.descuento_valor) / (
+      SELECT SUM(l2.cantidad * l2.precio_unitario) FROM lineas_comanda l2
+       WHERE l2.comanda_id = c.id AND COALESCE(l2.anulada, 0) = 0
+    )
+    ELSE 1.0
+  END`;
+
 // ---------------------------------------------------------------------------
 // Apertura / cierre
 // ---------------------------------------------------------------------------
@@ -149,11 +168,12 @@ turnosRouter.get("/informe", requireAuth, requireRole("admin"), (req, res) => {
   const productos = db
     .prepare(
       `SELECT p.nombre, p.tipo_iva, SUM(l.cantidad) AS unidades,
-              SUM(l.cantidad * l.precio_unitario) AS importe
+              SUM(l.cantidad * l.precio_unitario * (${FACTOR_DESCUENTO})) AS importe
          FROM lineas_comanda l
          JOIN productos p ON p.id = l.producto_id
          JOIN comandas c ON c.id = l.comanda_id
         WHERE c.restaurante_id = ? AND c.estado = 'cerrada'
+          AND COALESCE(l.anulada, 0) = 0
           AND date(c.cerrado_en) BETWEEN ? AND ?
         GROUP BY p.id ORDER BY importe DESC`
     )
@@ -163,11 +183,12 @@ turnosRouter.get("/informe", requireAuth, requireRole("admin"), (req, res) => {
   const iva = db
     .prepare(
       `SELECT p.tipo_iva AS tipo,
-              SUM(l.cantidad * l.precio_unitario) AS totalConIva
+              SUM(l.cantidad * l.precio_unitario * (${FACTOR_DESCUENTO})) AS totalConIva
          FROM lineas_comanda l
          JOIN productos p ON p.id = l.producto_id
          JOIN comandas c ON c.id = l.comanda_id
         WHERE c.restaurante_id = ? AND c.estado = 'cerrada'
+          AND COALESCE(l.anulada, 0) = 0
           AND date(c.cerrado_en) BETWEEN ? AND ?
         GROUP BY p.tipo_iva ORDER BY p.tipo_iva`
     )
@@ -381,11 +402,11 @@ turnosRouter.get("/:id/resumen", requireAuth, requireRole("admin"), (req, res) =
   const topProductos = db
     .prepare(
       `SELECT p.nombre, SUM(l.cantidad) AS unidades,
-              SUM(l.cantidad * l.precio_unitario) AS importe
+              SUM(l.cantidad * l.precio_unitario * (${FACTOR_DESCUENTO})) AS importe
          FROM lineas_comanda l
          JOIN productos p ON p.id = l.producto_id
          JOIN comandas c ON c.id = l.comanda_id
-        WHERE c.turno_id = ?
+        WHERE c.turno_id = ? AND COALESCE(l.anulada, 0) = 0
         GROUP BY p.id ORDER BY unidades DESC LIMIT 10`
     )
     .all(req.params.id);
@@ -397,7 +418,8 @@ turnosRouter.get("/:id/resumen", requireAuth, requireRole("admin"), (req, res) =
               COUNT(DISTINCT c.id) AS comandas,
               COUNT(DISTINCT CASE WHEN c.tipo = 'mesa' THEN c.id END) AS mesas,
               COUNT(DISTINCT CASE WHEN c.tipo = 'llevar' THEN c.id END) AS llevar,
-              COALESCE(SUM(l.cantidad * l.precio_unitario), 0) AS importe
+              COALESCE(SUM(CASE WHEN COALESCE(l.anulada, 0) = 0
+                THEN l.cantidad * l.precio_unitario * (${FACTOR_DESCUENTO}) ELSE 0 END), 0) AS importe
          FROM comandas c
          JOIN usuarios u ON u.id = c.camarero_id
          LEFT JOIN lineas_comanda l ON l.comanda_id = c.id

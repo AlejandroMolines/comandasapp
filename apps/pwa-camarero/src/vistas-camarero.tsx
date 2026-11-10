@@ -56,6 +56,7 @@ export function Sala({ zonas, mesas, abiertas, zonaId, onZonaId, onMesa, onLleva
   onAbrirComanda: (c: ComandaAbierta) => void;
 }) {
   const ahora = useAhora(true);
+  const [filtroMesa, setFiltroMesa] = useState("");
 
   // Si hay una sola zona, entramos directos (una vez, no en cada render).
   useEffect(() => {
@@ -169,13 +170,21 @@ export function Sala({ zonas, mesas, abiertas, zonaId, onZonaId, onMesa, onLleva
         {ocupadas > 0 && <Badge variant="destructive">{ocupadas} ocupadas</Badge>}
       </div>
 
+      {deZona.length > 0 && (
+        <div className="relative mb-3">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input className="pl-9" placeholder="Buscar mesa…" value={filtroMesa}
+            onChange={(e) => setFiltroMesa(e.target.value)} />
+        </div>
+      )}
+
       {deZona.length === 0 ? (
         <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
           Esta zona aún no tiene mesas.
         </div>
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(5.6rem,1fr))] gap-2.5">
-          {deZona.map((m) => {
+          {deZona.filter((m) => m.nombre.toLowerCase().includes(filtroMesa.trim().toLowerCase())).map((m) => {
             const c = porMesa.get(m.id);
             return (
               <button key={m.id} onClick={() => onMesa(m)}
@@ -220,7 +229,10 @@ export interface Extra {
   id: string; nombre: string; precio: number; ambito: string; grupo: string | null;
 }
 export interface LineaPrevia {
+  id?: string;
   cantidad: number; nombre: string; precio_unitario: number; notas: string | null;
+  anulada?: number;
+  motivo_anulacion?: string | null;
   extras?: { nombre: string; precio: number }[];
 }
 
@@ -241,6 +253,8 @@ export function Comanda({
 
   const [previas, setPrevias] = useState<LineaPrevia[]>([]);
   const [totalPrevio, setTotalPrevio] = useState(0);
+  const [anularDe, setAnularDe] = useState<LineaPrevia | null>(null);
+  const [recargaLocal, setRecargaLocal] = useState(0);
 
   // "resumen": lista de lo ya pedido, con un botón para añadir más.
   // "pedir": árbol/buscador para elegir productos nuevos.
@@ -266,7 +280,7 @@ export function Comanda({
         if (!decidido.current) { decidido.current = true; setModo("pedir"); }
       });
     return () => { vivo = false; };
-  }, [comandaId, recargarClave]);
+  }, [comandaId, recargarClave, recargaLocal]);
 
   const catActual = ruta.length ? ruta[ruta.length - 1] : null;
 
@@ -374,12 +388,12 @@ export function Comanda({
         <div className="flex flex-1 flex-col px-4 pb-4 pt-1">
           <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
             <ClipboardList className="size-4" />
-            <span>{previas.reduce((a, l) => a + l.cantidad, 0)} productos pedidos</span>
+            <span>{previas.filter((l) => !l.anulada).reduce((a, l) => a + l.cantidad, 0)} productos pedidos</span>
           </div>
           <div className="flex-1 overflow-y-auto rounded-lg border bg-card">
             {previas.map((l, i) => (
-              <div key={i} className={cn("flex gap-2 px-3 py-2.5 text-sm", i > 0 && "border-t")}>
-                <span className="flex-1">
+              <div key={l.id ?? i} className={cn("flex items-start gap-2 px-3 py-2.5 text-sm", i > 0 && "border-t", l.anulada && "opacity-50")}>
+                <span className={cn("flex-1", l.anulada && "line-through")}>
                   <b className="font-mono">{l.cantidad}×</b> {l.nombre}
                   {(l.extras ?? []).map((ex, k) => (
                     <em key={k} className="block text-xs not-italic text-primary">
@@ -387,8 +401,22 @@ export function Comanda({
                     </em>
                   ))}
                   {l.notas && <em className="block text-xs not-italic text-warning">{l.notas}</em>}
+                  {!!l.anulada && (
+                    <em className="block text-xs not-italic text-destructive no-underline">
+                      Anulada{l.motivo_anulacion ? ` · ${l.motivo_anulacion}` : ""}
+                    </em>
+                  )}
                 </span>
-                <span className="font-mono text-muted-foreground">{eur(l.cantidad * l.precio_unitario)}</span>
+                {l.anulada ? (
+                  <span className="font-mono text-xs text-muted-foreground">anulada</span>
+                ) : (
+                  <>
+                    <span className="font-mono text-muted-foreground">{eur(l.cantidad * l.precio_unitario)}</span>
+                    <button className="text-xs font-semibold text-destructive" onClick={() => setAnularDe(l)}>
+                      Anular
+                    </button>
+                  </>
+                )}
               </div>
             ))}
           </div>
@@ -538,7 +566,84 @@ export function Comanda({
       {notaPara && (
         <DialogoExtras producto={notaPara} onCerrar={() => setNotaPara(null)} onOk={añadirConExtras} />
       )}
+      {anularDe && (
+        <DialogoAnular
+          comandaId={comandaId}
+          linea={anularDe}
+          onCerrar={() => setAnularDe(null)}
+          onHecha={() => {
+            setAnularDe(null);
+            setRecargaLocal((n) => n + 1);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+const MOTIVOS_ANULACION = ["El cliente ya no lo quiere", "Error al pedir", "Agotado en cocina"];
+
+function DialogoAnular({ comandaId, linea, onCerrar, onHecha }: {
+  comandaId: string;
+  linea: LineaPrevia;
+  onCerrar: () => void;
+  onHecha: () => void;
+}) {
+  const [motivo, setMotivo] = useState(MOTIVOS_ANULACION[0]);
+  const [otro, setOtro] = useState("");
+  const [cantidad, setCantidad] = useState(linea.cantidad);
+  const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState("");
+  const texto = (otro.trim() || motivo).trim();
+
+  const confirmar = async () => {
+    if (!linea.id || texto.length < 2) return;
+    setEnviando(true);
+    setError("");
+    try {
+      await api(`/comandas/${comandaId}/lineas/${linea.id}/anular`, {
+        method: "POST",
+        body: { motivo: texto, cantidad },
+      });
+      onHecha();
+    } catch (e) {
+      setError((e as Error).message);
+      setEnviando(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onCerrar(); }} title="Anular producto">
+      <p className="mb-3 text-sm">
+        <b className="font-mono">{linea.cantidad}×</b> {linea.nombre}
+      </p>
+      {linea.cantidad > 1 && (
+        <div className="mb-3 flex items-center gap-3">
+          <span className="flex-1 text-sm text-muted-foreground">Cuántos se anulan</span>
+          <Button variant="secondary" size="icon-sm" disabled={cantidad <= 1}
+            onClick={() => setCantidad(cantidad - 1)}><Minus /></Button>
+          <span className="w-6 text-center font-mono font-bold">{cantidad}</span>
+          <Button size="icon-sm" disabled={cantidad >= linea.cantidad}
+            onClick={() => setCantidad(cantidad + 1)}><Plus /></Button>
+        </div>
+      )}
+      <div className="mb-3 flex flex-col gap-1.5">
+        {MOTIVOS_ANULACION.map((m) => (
+          <button key={m} onClick={() => { setMotivo(m); setOtro(""); }}
+            className={cn(
+              "rounded-md border px-3 py-2 text-left text-sm",
+              motivo === m && !otro && "border-primary bg-primary/10"
+            )}>
+            {m}
+          </button>
+        ))}
+        <Input placeholder="Otro motivo…" value={otro} onChange={(e) => setOtro(e.target.value)} />
+      </div>
+      {error && <p className="mb-2 text-sm text-destructive">{error}</p>}
+      <Button variant="destructive" disabled={enviando || texto.length < 2} onClick={() => void confirmar()}>
+        {enviando ? "Anulando…" : "Anular y avisar a cocina"}
+      </Button>
+    </Dialog>
   );
 }
 
@@ -668,8 +773,11 @@ function DialogoExtras({ producto, onOk, onCerrar }: {
 export function Cobro({ comandaId, titulo, onCerrado, onVolver }: {
   comandaId: string; titulo: string; onCerrado: () => void; onVolver: () => void;
 }) {
-  const [cuenta, setCuenta] = useState<{ total: number; pagado: number; pendiente: number } | null>(null);
-  const [lineas, setLineas] = useState<{ cantidad: number; nombre: string; precio_unitario: number; notas: string | null; tipo_iva?: number; extras?: { nombre: string; precio: number }[] }[]>([]);
+  const [cuenta, setCuenta] = useState<{
+    total: number; pagado: number; pendiente: number;
+    bruto?: number; descuento?: number; descuentoMotivo?: string | null;
+  } | null>(null);
+  const [lineas, setLineas] = useState<{ cantidad: number; nombre: string; precio_unitario: number; notas: string | null; tipo_iva?: number; anulada?: number; extras?: { nombre: string; precio: number }[] }[]>([]);
   const [fiscal, setFiscal] = useState<{ razonSocial: string; nif: string; direccion: string }>({ razonSocial: "", nif: "", direccion: "" });
   const [abierta, setAbierta] = useState<string | null>(null);
   const [cajas, setCajas] = useState<{ id: string; nombre: string }[]>([]);
@@ -682,13 +790,19 @@ export function Cobro({ comandaId, titulo, onCerrado, onVolver }: {
   const [buscarEmpresa, setBuscarEmpresa] = useState("");
   const [pidiendoFactura, setPidiendoFactura] = useState(false);
   const [toast, avisar] = useToast();
+  const [dtoTipo, setDtoTipo] = useState<"porcentaje" | "importe">("porcentaje");
+  const [dtoValor, setDtoValor] = useState("");
+  const [dtoMotivo, setDtoMotivo] = useState("");
+  const [dtoAbierto, setDtoAbierto] = useState(false);
 
-  useEffect(() => {
-    // Las tres peticiones van en paralelo, y la pantalla se pinta con lo
-    // primero que llegue: la cuenta es lo único imprescindible.
-    void api<{ total: number; pagado: number; pendiente: number }>(`/comandas/${comandaId}/cuenta`).then(setCuenta);
+  const recargarCuenta = () => {
+    void api<NonNullable<typeof cuenta>>(`/comandas/${comandaId}/cuenta`).then(setCuenta);
     void api<{ lineas: typeof lineas; comanda: { creado_en: string } }>(`/comandas/${comandaId}`)
       .then((r) => { setLineas(r.lineas); setAbierta(r.comanda.creado_en); });
+  };
+
+  useEffect(() => {
+    recargarCuenta();
     // Las impresoras de ticket son opcionales: si tardan o fallan, se puede
     // cobrar igual (sin ticket impreso), no deben bloquear el cobro.
     void api<{ id: string; nombre: string; tipo: string }[]>("/destinos")
@@ -712,10 +826,40 @@ export function Cobro({ comandaId, titulo, onCerrado, onVolver }: {
 
   const [cobrando, setCobrando] = useState(false);
 
+  const aplicarDescuento = async () => {
+    const valor = Number(dtoValor.replace(",", "."));
+    if (!Number.isFinite(valor) || valor <= 0) return avisar("Escribe un descuento válido", true);
+    try {
+      const cuentaNueva = await api<NonNullable<typeof cuenta>>(`/comandas/${comandaId}/descuento`, {
+        method: "PUT",
+        body: { tipo: dtoTipo, valor, motivo: dtoMotivo.trim() || undefined },
+      });
+      setCuenta(cuentaNueva);
+      setDtoAbierto(false);
+      avisar("Descuento aplicado");
+    } catch (e) {
+      avisar((e as Error).message, true);
+    }
+  };
+
+  const quitarDescuento = async () => {
+    try {
+      setCuenta(await api(`/comandas/${comandaId}/descuento`, { method: "PUT", body: { tipo: "ninguno", valor: 0 } }));
+      avisar("Descuento quitado");
+    } catch (e) {
+      avisar((e as Error).message, true);
+    }
+  };
+
   const cobrar = async () => {
     if (!cuenta || cobrando) return;
     setCobrando(true);
     try {
+      if (cuenta.pendiente <= 0.01) {
+        await api(`/comandas/${comandaId}/cerrar`, { method: "POST" });
+        onCerrado();
+        return;
+      }
       const r = await api<{ comandaCerrada: boolean }>(`/comandas/${comandaId}/pagos`, {
         method: "POST",
         body: { metodo, importe: cuenta.pendiente, impresoraTicketId: cajaId, empresaId },
@@ -762,7 +906,7 @@ export function Cobro({ comandaId, titulo, onCerrado, onVolver }: {
               {titulo}{abierta && ` · abierta hace ${transcurrido(abierta)}`}
             </p>
             <hr className="sep" />
-            {lineas.map((l, i) => (
+            {lineas.filter((l) => !l.anulada).map((l, i) => (
               <div key={i}>
                 <div className="flex justify-between gap-3">
                   <span>{l.cantidad}× {l.nombre}</span>
@@ -777,6 +921,12 @@ export function Cobro({ comandaId, titulo, onCerrado, onVolver }: {
               </div>
             ))}
             <hr className="sep" />
+            {(cuenta.descuento ?? 0) > 0 && (
+              <div className="flex justify-between text-[0.76rem]">
+                <span>Descuento{cuenta.descuentoMotivo ? ` · ${cuenta.descuentoMotivo}` : ""}</span>
+                <span>−{eur(cuenta.descuento ?? 0)}</span>
+              </div>
+            )}
             {cuenta.pagado > 0 && (
               <>
                 <div className="flex justify-between text-[0.76rem] opacity-70"><span>Ya pagado</span><span>−{eur(cuenta.pagado)}</span></div>
@@ -785,10 +935,13 @@ export function Cobro({ comandaId, titulo, onCerrado, onVolver }: {
             )}
             {/* Desglose de IVA: obligatorio indicar el tipo aplicado */}
             {(() => {
+              const vivas = lineas.filter((l) => !l.anulada);
+              const bruto = vivas.reduce((a, l) => a + l.cantidad * l.precio_unitario, 0);
+              const factor = bruto > 0 && (cuenta.descuento ?? 0) > 0 ? (bruto - (cuenta.descuento ?? 0)) / bruto : 1;
               const porTipo = new Map<number, number>();
-              for (const l of lineas) {
+              for (const l of vivas) {
                 const t = l.tipo_iva ?? 10;
-                porTipo.set(t, (porTipo.get(t) ?? 0) + l.cantidad * l.precio_unitario);
+                porTipo.set(t, (porTipo.get(t) ?? 0) + l.cantidad * l.precio_unitario * factor);
               }
               const filas = [...porTipo.entries()].sort((a, b) => a[0] - b[0]).map(([tipo, conIva]) => {
                 const base = Math.round((conIva / (1 + tipo / 100)) * 100) / 100;
@@ -815,7 +968,7 @@ export function Cobro({ comandaId, titulo, onCerrado, onVolver }: {
             <p className="text-center text-[0.7rem] opacity-70">(IVA incluido)</p>
             <hr className="sep" />
             <div className="flex justify-between text-[0.78rem]">
-              <span>{lineas.reduce((a, l) => a + l.cantidad, 0)} productos</span>
+              <span>{lineas.filter((l) => !l.anulada).reduce((a, l) => a + l.cantidad, 0)} productos</span>
               <span>{metodo === "efectivo" ? "EFECTIVO" : "TARJETA"}</span>
             </div>
             {empresaId && (
@@ -831,6 +984,42 @@ export function Cobro({ comandaId, titulo, onCerrado, onVolver }: {
           </div>
 
           <div className="mx-auto flex w-full max-w-[26rem] flex-col gap-3">
+            {(cuenta.descuento ?? 0) > 0 ? (
+              <div className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
+                <span className="flex-1">
+                  Descuento {cuenta.descuentoMotivo ? `· ${cuenta.descuentoMotivo}` : ""}
+                  <b className="ml-2 font-mono">−{eur(cuenta.descuento ?? 0)}</b>
+                </span>
+                <Button variant="ghost" size="sm" onClick={() => void quitarDescuento()}>Quitar</Button>
+              </div>
+            ) : !dtoAbierto ? (
+              <Button variant="outline" onClick={() => setDtoAbierto(true)}>Aplicar descuento</Button>
+            ) : (
+              <div className="flex flex-col gap-2 rounded-lg border bg-card p-3">
+                <div className="flex gap-2">
+                  <Button className="flex-1" variant={dtoTipo === "porcentaje" ? "default" : "secondary"}
+                    onClick={() => setDtoTipo("porcentaje")}>%</Button>
+                  <Button className="flex-1" variant={dtoTipo === "importe" ? "default" : "secondary"}
+                    onClick={() => setDtoTipo("importe")}>€</Button>
+                </div>
+                <div className="flex gap-2">
+                  {(dtoTipo === "porcentaje" ? [5, 10, 20] : [1, 2, 5]).map((n) => (
+                    <Button key={n} variant={dtoValor === String(n) ? "default" : "secondary"} className="flex-1"
+                      onClick={() => setDtoValor(String(n))}>
+                      {dtoTipo === "porcentaje" ? `${n}%` : `${n} €`}
+                    </Button>
+                  ))}
+                </div>
+                <Input inputMode="decimal" placeholder={dtoTipo === "porcentaje" ? "Otro porcentaje" : "Otro importe"}
+                  value={dtoValor} onChange={(e) => setDtoValor(e.target.value)} />
+                <Input placeholder="Motivo (opcional): cortesía, personal…" value={dtoMotivo}
+                  onChange={(e) => setDtoMotivo(e.target.value)} />
+                <div className="flex gap-2">
+                  <Button variant="ghost" className="flex-1" onClick={() => setDtoAbierto(false)}>Cancelar</Button>
+                  <Button className="flex-1" onClick={() => void aplicarDescuento()}>Aplicar</Button>
+                </div>
+              </div>
+            )}
             <div className="flex gap-2">
               <Button className="flex-1" variant={metodo === "efectivo" ? "default" : "secondary"} onClick={() => setMetodo("efectivo")}>
                 <Banknote /> Efectivo
@@ -907,9 +1096,11 @@ export function Cobro({ comandaId, titulo, onCerrado, onVolver }: {
             <Button size="lg" className="font-semibold" onClick={cobrar} disabled={cobrando}>
               {cobrando
                 ? "Cobrando…"
-                : empresaId
-                  ? `Cobrar ${eur(cuenta.pendiente)} y emitir factura`
-                  : `Cobrar ${eur(cuenta.pendiente)} e imprimir`}
+                : cuenta.pendiente <= 0.01
+                  ? "Cerrar mesa"
+                  : empresaId
+                    ? `Cobrar ${eur(cuenta.pendiente)} y emitir factura`
+                    : `Cobrar ${eur(cuenta.pendiente)} e imprimir`}
             </Button>
           </div>
         </div>

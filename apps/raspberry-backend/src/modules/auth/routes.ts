@@ -2,7 +2,15 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "../../db/connection.js";
 import { firmarToken } from "../../middleware/auth.js";
+import { firmarPayload, hashSecreto, leerToken, verificarSecreto } from "../../lib/secretos.js";
 import type { Request, Response, NextFunction } from "express";
+
+function aceptarSecreto(plano: string, almacenado: string, alCambiar: (nuevo: string) => void): boolean {
+  const resultado = verificarSecreto(plano, almacenado);
+  if (!resultado.ok) return false;
+  if (resultado.legacy) alCambiar(hashSecreto(plano));
+  return true;
+}
 
 export const authRouter = Router();
 const RESTAURANTE_ID = process.env.RESTAURANTE_ID ?? "restaurante-demo";
@@ -18,14 +26,12 @@ interface TokenRestaurante {
 function requireRestaurante(req: Request, res: Response, next: NextFunction) {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) return res.status(401).json({ error: "Falta token" });
-  try {
-    const raw = JSON.parse(Buffer.from(header.slice(7), "base64").toString("utf-8")) as TokenRestaurante;
-    if (raw.nivel !== "restaurante") return res.status(401).json({ error: "Token inválido" });
-    (req as Request & { restaurante?: TokenRestaurante }).restaurante = raw;
-    next();
-  } catch {
+  const raw = leerToken<TokenRestaurante>(header.slice(7));
+  if (!raw || raw.nivel !== "restaurante" || !raw.restauranteId) {
     return res.status(401).json({ error: "Token inválido" });
   }
+  (req as Request & { restaurante?: TokenRestaurante }).restaurante = raw;
+  next();
 }
 
 // PASO 1: login del restaurante con email + contraseña.
@@ -40,15 +46,19 @@ authRouter.post("/restaurante", (req, res) => {
   if (!parsed.success) return res.status(400).json(parsed.error.flatten());
   const { email, password, dispositivoId } = parsed.data;
 
-  // TODO producción: password con bcrypt en vez de texto plano.
   const rest = db
-    .prepare(`SELECT id, nombre FROM restaurantes WHERE email = ? AND password_hash = ?`)
-    .get(email.toLowerCase().trim(), password) as { id: string; nombre: string } | undefined;
-  if (!rest) return res.status(401).json({ error: "Email o contraseña incorrectos" });
+    .prepare(`SELECT id, nombre, password_hash FROM restaurantes WHERE email = ?`)
+    .get(email.toLowerCase().trim()) as { id: string; nombre: string; password_hash: string } | undefined;
+  const ok = !!rest && aceptarSecreto(password, rest.password_hash, (nuevo) => {
+    db.prepare(`UPDATE restaurantes SET password_hash = ? WHERE id = ?`).run(nuevo, rest!.id);
+  });
+  if (!rest || !ok) return res.status(401).json({ error: "Email o contraseña incorrectos" });
 
-  const token = Buffer.from(
-    JSON.stringify({ nivel: "restaurante", restauranteId: rest.id, dispositivoId } satisfies TokenRestaurante)
-  ).toString("base64");
+  const token = firmarPayload({
+    nivel: "restaurante",
+    restauranteId: rest.id,
+    dispositivoId,
+  } satisfies TokenRestaurante);
 
   res.json({ tokenRestaurante: token, restaurante: { id: rest.id, nombre: rest.nombre } });
 });
@@ -86,8 +96,11 @@ authRouter.post("/entrar", requireRestaurante, (req, res) => {
     | undefined;
   if (!usuario) return res.status(404).json({ error: "Perfil no encontrado" });
 
-  if (usuario.pin_hash !== "" && usuario.pin_hash !== (parsed.data.pin ?? "")) {
-    return res.status(401).json({ error: "PIN incorrecto" });
+  if (usuario.pin_hash !== "") {
+    const pinOk = aceptarSecreto(parsed.data.pin ?? "", usuario.pin_hash, (nuevo) => {
+      db.prepare(`UPDATE usuarios SET pin_hash = ? WHERE id = ?`).run(nuevo, usuario.id);
+    });
+    if (!pinOk) return res.status(401).json({ error: "PIN incorrecto" });
   }
 
   const token = firmarToken({

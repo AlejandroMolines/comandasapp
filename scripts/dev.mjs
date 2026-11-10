@@ -136,14 +136,17 @@ async function main() {
   if (!ok) { log("sys", "el backend no arranca — revisa los logs de arriba\n"); return matarTodo(); }
   log("sys", "backend OK ✓\n");
 
-  // 2. Admin inicial (el script es idempotente: si ya existe, no hace nada).
-  await new Promise((res) => {
-    const p = spawn("node", ["scripts/bootstrap-admin.mjs"], {
-      cwd: path.join(raiz, "apps/raspberry-backend"), shell: true,
+  // 2. Admin inicial y, si el local está vacío, carta y mesas de demostración.
+  for (const script of ["scripts/bootstrap-admin.mjs", "scripts/seed-demo.mjs"]) {
+    await new Promise((res) => {
+      const p = spawn("node", [script], {
+        cwd: path.join(raiz, "apps/raspberry-backend"), shell: true,
+      });
+      p.stdout.on("data", (d) => log("sys", d.toString()));
+      p.stderr.on("data", (d) => log("sys", d.toString()));
+      p.on("exit", () => res());
     });
-    p.stdout.on("data", (d) => log("sys", d.toString()));
-    p.on("exit", () => res());
-  });
+  }
 
   // 3. Impresora falsa (opcional) — ANTES del worker, para que el health check la vea viva.
   if (conFake) {

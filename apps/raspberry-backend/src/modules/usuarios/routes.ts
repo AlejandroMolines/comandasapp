@@ -3,6 +3,7 @@ import { v4 as uuid } from "uuid";
 import { z } from "zod";
 import { db } from "../../db/connection.js";
 import { requireAuth, requireRole } from "../../middleware/auth.js";
+import { hashSecreto } from "../../lib/secretos.js";
 
 export const usuariosRouter = Router();
 
@@ -33,7 +34,7 @@ usuariosRouter.post("/", requireAuth, requireRole("admin"), (req, res) => {
   db.prepare(
     `INSERT INTO usuarios (id, restaurante_id, nombre, rol, pin_hash, activo, creado_en)
      VALUES (?, ?, ?, ?, ?, 1, ?)`
-  ).run(id, RESTAURANTE_ID, nombre, rol, pin ?? "", new Date().toISOString());
+  ).run(id, RESTAURANTE_ID, nombre, rol, pin ? hashSecreto(pin) : "", new Date().toISOString());
 
   res.status(201).json({ id, nombre, rol });
 });

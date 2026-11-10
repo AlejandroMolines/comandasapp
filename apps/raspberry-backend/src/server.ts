@@ -5,6 +5,7 @@ import fs from "node:fs";
 import { createServer } from "node:http";
 import path from "node:path";
 import { Server as SocketServer } from "socket.io";
+import { secretosIguales, secretoFirma } from "./lib/secretos.js";
 import { ajustesRouter } from "./modules/ajustes/routes.js";
 import { authRouter } from "./modules/auth/routes.js";
 import { cartaRouter } from "./modules/carta/routes.js";
@@ -21,6 +22,7 @@ import { usuariosRouter } from "./modules/usuarios/routes.js";
 const PORT = Number(process.env.PORT ?? 3000);
 const RESTAURANTE_ID = process.env.RESTAURANTE_ID ?? "restaurante-demo";
 
+export function crearServidor() {
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -28,6 +30,14 @@ app.use(express.json());
 const httpServer = createServer(app);
 const io = new SocketServer(httpServer, { cors: { origin: "*" } });
 app.set("io", io);
+
+// El worker se identifica con el mismo secreto que firma los tokens.
+// Un móvil de la sala no puede fingir "impreso" ni inyectar tickets de cocina.
+io.use((socket, next) => {
+  const recibido = String(socket.handshake.auth?.workerSecret ?? "");
+  socket.data.esWorker = secretosIguales(recibido, secretoFirma());
+  next();
+});
 
 io.on("connection", (socket) => {
   // En un Raspberry real, cada restaurante es el único inquilino,
@@ -47,6 +57,7 @@ io.on("connection", (socket) => {
   socket.on(
     "worker:kds_ticket",
     async (data: { canal: string; ticket: unknown }, ack: (r: { ok: boolean }) => void) => {
+      if (!socket.data.esWorker) return ack({ ok: false });
       const room = io.sockets.adapter.rooms.get(`kds:${data.canal}`);
       if (!room || room.size === 0) return ack({ ok: false });
       io.to(`kds:${data.canal}`).emit("kds:nuevo_ticket", data.ticket);
@@ -57,16 +68,19 @@ io.on("connection", (socket) => {
   // Confirmación de impresión: el móvil origen puede pasar la comanda
   // a "confirmado_impresora" (el doble check del camarero).
   socket.on("worker:impresion_ok", (data: { restauranteId: string }) => {
+    if (!socket.data.esWorker) return;
     io.to(data.restauranteId).emit("impresion:ok", data);
   });
 
   // Fallo definitivo: alerta a TODOS los dispositivos del restaurante.
   socket.on("worker:impresion_fallida", (data: { restauranteId: string }) => {
+    if (!socket.data.esWorker) return;
     io.to(data.restauranteId).emit("impresion:fallida", data);
   });
 
   // Transición de salud de un destino (semáforo verde/rojo del dashboard).
   socket.on("worker:salud_destino", (data: { restauranteId: string }) => {
+    if (!socket.data.esWorker) return;
     io.to(data.restauranteId).emit("destino:salud", data);
   });
 
@@ -99,15 +113,22 @@ if (fs.existsSync(pwaDist)) {
   console.log(`[raspberry-backend] sirviendo PWA desde ${pwaDist}`);
 }
 
-httpServer.listen(PORT, () => {
-  console.log(`[raspberry-backend] escuchando en http://localhost:${PORT}`);
-});
-
 // Red de seguridad: cualquier excepción no controlada en una ruta (p.ej. un
 // FOREIGN KEY constraint que se nos haya escapado de validar) se convierte
 // en un 500 con JSON limpio, en vez de tumbar el log con un stack trace y
 // dejar la petición colgada. Debe ir DESPUÉS de montar todas las rutas.
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error("[raspberry-backend] error no controlado:", err.message);
-  res.status(500).json({ error: "Error interno del servidor", detalle: err.message });
+  console.error("[raspberry-backend] error no controlado:", err);
+  if (res.headersSent) return;
+  res.status(500).json({ error: "Error interno del servidor" });
 });
+
+return { app, httpServer, io };
+}
+
+if (process.env.NODE_ENV !== "test") {
+  const { httpServer } = crearServidor();
+  httpServer.listen(PORT, () => {
+    console.log(`[raspberry-backend] escuchando en http://localhost:${PORT}`);
+  });
+}

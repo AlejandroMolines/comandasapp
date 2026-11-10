@@ -1,0 +1,9 @@
+[Unit]
+Description=Comandas — copia de seguridad de la base de datos
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/comandas/apps/raspberry-backend
+Environment=DB_PATH=/var/lib/comandas/local.sqlite
+Environment=DESTINO_BACKUP=/var/backups/comandas
+ExecStart=/usr/bin/node scripts/mantenimiento.mjs
