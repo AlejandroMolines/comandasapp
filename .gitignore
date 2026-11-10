@@ -4,6 +4,7 @@ node_modules/
 
 # Builds (se generan con pnpm build)
 dist/
+/public/
 *.tsbuildinfo
 
 # ── BASE DE DATOS: nunca subir ──────────────────────────────────────────────
@@ -30,6 +31,9 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Vercel (enlace local, no es código)
+.vercel/
 
 # Editores
 .vscode/*

@@ -45,27 +45,56 @@ PC admin (kiosko) ───┘                 │
                               printer-worker (proceso aparte)
 ```
 
+Son tres piezas, y solo una de ellas está en internet:
+
+| Pieza | Dónde corre | Para qué |
+|---|---|---|
+| Móvil | El navegador del camarero, contra el Raspberry | Tomar comandas |
+| PC | El navegador del encargado, contra el mismo Raspberry | Carta, caja, personal |
+| Central | Vercel | Ver si cada local sigue en línea |
+
+El móvil y el PC no se instalan: abren la misma dirección del Raspberry. Si se cae internet, esos dos siguen. La central solo recibe un aviso cada 30 segundos y no interviene en el servicio.
+
 | Paquete | Qué es | Stack |
 |---|---|---|
 | `apps/raspberry-backend` | API, base de datos y servidor de la PWA | Node 22, Express, better-sqlite3, Socket.IO, Zod |
 | `apps/printer-worker` | Cola de impresión → impresoras | Node 22, ESC/POS propio |
 | `apps/pwa-camarero` | La app (camarero y admin) | React 18, Vite 5, Tailwind 4, shadcn/ui |
+| `apps/nube` | La central que se publica en Vercel | React, Vite |
 | `packages/shared-types` | Tipos compartidos | TypeScript |
 
 Monorepo con **pnpm workspaces**. Node 22 (fijado en `.nvmrc`).
 
-## Arrancar
+## Arrancar el local
+
+Con Node 22 instalado, desde la raíz del repo:
 
 ```bash
-nvm use 22
-pnpm install
-pnpm start:all --fake     # --fake levanta una impresora simulada
+node iniciar.mjs
 ```
 
-El script compila la PWA, arranca el backend, crea el admin si no existe, y si
-el local está vacío carga una sala, una carta y las impresoras de demostración
-apuntando a `127.0.0.1:9100`. Luego lanza el worker y Vite, y muestra las URLs
-(incluida la del móvil).
+Eso instala, compila y deja el servicio en el puerto 3000. El PC entra por
+`http://localhost:3000` y los móviles, en la misma WiFi, por la IP que imprime
+el script. Si el local está vacío, carga una sala, una carta y una impresora
+simulada en `127.0.0.1:9100`. Con una térmica de verdad:
+`node iniciar.mjs --sin-impresora-falsa`.
+
+Para desarrollar con recarga automática sigue existiendo `pnpm start:all`.
+
+### Avisar a la central
+
+La central está publicada en <https://comandasapp-theta.vercel.app>.
+
+En el Raspberry (no hace falta para servir mesas), con la misma clave que
+`NUBE_TOKEN` en el proyecto de Vercel:
+
+```bash
+NUBE_URL=https://comandasapp-theta.vercel.app
+NUBE_TOKEN=la-clave-de-vercel
+```
+
+Sin esas dos variables el proceso no llama a nadie. El estado de los locales
+se guarda en Vercel Blob, así que no se pierde al reiniciar la función.
 
 **Login de demostración:** `admin@demo.com` / `admin` → perfil Admin → PIN `1234`
 Camarero de la semilla: perfil **Ana** → PIN `1111`

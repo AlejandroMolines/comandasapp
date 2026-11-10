@@ -1,12 +1,19 @@
 {
   "name": "comandas-app",
+  "packageManager": "pnpm@10.33.4",
   "private": true,
+  "type": "module",
   "version": "0.1.0",
   "scripts": {
     "start:all": "node scripts/dev.mjs --fake",
+    "local": "node iniciar.mjs",
     "dev:raspberry": "pnpm --filter raspberry-backend dev",
-    "build": "pnpm -r build",
-    "test": "pnpm --filter raspberry-backend test"
+    "build": "node scripts/build.mjs",
+    "test": "pnpm --filter raspberry-backend test && node --test test/nube.test.mjs"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.0.2",
+    "@vercel/blob": "^2.9.0"
   },
   "devDependencies": {
     "typescript": "^5.5.4"
