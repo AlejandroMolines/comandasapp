@@ -145,22 +145,27 @@ trabajando con los móviles y las impresoras sin enterarse.
 Ver también las notas de logs en [raspberry-backend.md](./raspberry-backend.md):
 conviene poner el journal de systemd en RAM para no desgastar la SD.
 
-## El Cloud (futuro)
+## La central (Vercel)
 
-No hace falta para que un restaurante funcione. Serviría para:
+`apps/nube` es un panel que se publica en Vercel. Cada Raspberry, si tiene
+`NUBE_URL` y `NUBE_TOKEN`, le manda un aviso cada 30 segundos: nombre, mesas
+ocupadas y si las impresoras responden. No manda tickets ni datos de clientes.
+
+La central no está en el camino del servicio. Si Vercel o internet caen, el
+aviso falla y el bar sigue. El panel solo sirve para ver, desde fuera, qué
+local ha dejado de llamar.
+
+Vercel no puede entrar al Raspberry (está detrás del router del bar). Por eso
+el local llama hacia fuera, y no al revés.
+
+Lo que esa central todavía no hace, y sigue siendo futuro:
 
 1. Ver la facturación de varios locales desde casa.
-2. Copia de seguridad del histórico.
+2. Copia de seguridad del histórico en la nube.
 3. Comparar entre locales.
 4. Actualizar la flota de Raspberries sin ir uno por uno.
-5. Enterarse de que un Raspberry está caído antes de que llame el encargado.
-6. Informes fiscales agregados.
+5. Informes fiscales agregados.
 
-**Recomendación:** con un solo restaurante, no montarlo. Es una cuota mensual
-para resolver problemas que aún no existen. Lo que sí merece la pena ya es un
-**backup automático nocturno** de la base de datos a un USB o a la nube: cubre el
-90 % del riesgo real (perder los datos) sin infraestructura.
-
-El Cloud empieza a tener sentido con 3-4 locales, o cuando se quiera vender el
-sistema a otros bares — ahí un panel multi-tenant pasa de capricho a necesidad,
-porque no puedes ir a casa de cada cliente a ver por qué no le imprime.
+El aviso de «este local ha dejado de llamar» ya lo hace la central. El histórico
+de ventas sigue viviendo solo en el Raspberry: la copia que importa es la del
+USB o el disco, cada noche (`docs/MANTENIMIENTO.md`).

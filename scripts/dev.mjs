@@ -170,6 +170,8 @@ async function main() {
   log("sys", `  · PWA hot reload: http://localhost:5173   (móvil: http://${ip}:5173)\n`);
   log("sys", `  · Impresora falsa :9100  ${conFake ? "SÍ" : "no (usa --fake)"}\n`);
   log("sys", "  · Login: admin@demo.com / admin -> perfil Admin (PIN 1234)\n");
+  log("sys", "  · PC: localhost:3000   · Móviles: la IP de arriba\n");
+  log("sys", `  · Central: ${process.env.NUBE_URL || "no configurada (el local no la necesita)"}\n`);
   log("sys", "  · Ctrl+C para parar todo\n");
   log("sys", "═══════════════════════════════════════════════\n");
 }
