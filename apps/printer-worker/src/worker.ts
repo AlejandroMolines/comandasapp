@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import fs from "node:fs";
 import path from "node:path";
 import { io, type Socket } from "socket.io-client";
 import { escposRedDriver } from "./drivers/escpos-red.js";
@@ -24,9 +25,40 @@ const BACKOFF_MS = [0, 2_000, 5_000, 15_000];
 const db = new Database(DB_PATH);
 db.pragma("journal_mode = WAL");
 
+// Por si el worker arranca contra una BD de una versión anterior
+// (el backend aplica lo mismo al servir el esquema).
+for (const [tabla, columna, def] of [
+  ["lineas_comanda", "anulada", "INTEGER NOT NULL DEFAULT 0"],
+  ["comandas", "descuento_tipo", "TEXT"],
+  ["comandas", "descuento_valor", "REAL NOT NULL DEFAULT 0"],
+  ["comandas", "descuento_motivo", "TEXT"],
+  ["log_impresion", "es_anulacion", "INTEGER NOT NULL DEFAULT 0"],
+  ["log_impresion", "linea_anulada_id", "TEXT"],
+] as const) {
+  const tablaExiste = db
+    .prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`)
+    .get(tabla);
+  if (!tablaExiste) continue;
+  const info = db.prepare(`PRAGMA table_info(${tabla})`).all() as { name: string }[];
+  if (!info.some((c) => c.name === columna)) {
+    db.exec(`ALTER TABLE ${tabla} ADD COLUMN ${columna} ${def}`);
+  }
+}
+
+function secretoWorker(): string {
+  if (process.env.TOKEN_SECRET) return process.env.TOKEN_SECRET;
+  const ruta = process.env.TOKEN_SECRET_FILE
+    ?? path.join(path.dirname(DB_PATH), "token.secret");
+  try {
+    return fs.readFileSync(ruta, "utf8").trim();
+  } catch {
+    return "";
+  }
+}
+
 // Conexión al backend para: alertas a los dispositivos + canal KDS.
 const socketBackend: Socket = io(BACKEND_URL, {
-  auth: { rol: "printer-worker" },
+  auth: { rol: "printer-worker", workerSecret: secretoWorker() },
   reconnection: true,
 });
 socketBackend.on("connect", () => console.log("[worker] conectado al backend"));
@@ -50,9 +82,65 @@ interface LogRow {
   /** 1 si es una reimpresión: el papel saldrá marcado como COPIA */
   es_copia: number;
   ultimo_intento_en: string | null;
+  es_anulacion: number;
+  linea_anulada_id: string | null;
+}
+
+function eurosDescuento(bruto: number, tipo: string | null, valor: number): number {
+  if (!tipo || valor <= 0 || bruto <= 0) return 0;
+  const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+  if (tipo === "porcentaje") return r2((bruto * Math.min(valor, 100)) / 100);
+  if (tipo === "importe") return r2(Math.min(valor, bruto));
+  return 0;
 }
 
 function construirTicket(log: LogRow, destinoId: string): TicketData | null {
+  // Aviso de anulación: una sola línea, marcada para que cocina retire el plato.
+  // Tiene que ir ANTES del ticket de ronda, porque también lleva ronda_id.
+  if (log.es_anulacion && log.linea_anulada_id) {
+    const linea = db
+      .prepare(
+        `SELECT l.cantidad, l.motivo_anulacion, l.notas, p.nombre,
+                u.nombre AS camarero, m.nombre AS mesa, l.enviado_en
+           FROM lineas_comanda l
+           JOIN productos p ON p.id = l.producto_id
+           LEFT JOIN usuarios u ON u.id = l.anulada_por
+           JOIN comandas c ON c.id = l.comanda_id
+           LEFT JOIN mesas m ON m.id = c.mesa_id
+          WHERE l.id = ?`
+      )
+      .get(log.linea_anulada_id) as
+      | {
+          cantidad: number;
+          motivo_anulacion: string | null;
+          notas: string | null;
+          nombre: string;
+          camarero: string | null;
+          mesa: string | null;
+          enviado_en: string | null;
+        }
+      | undefined;
+    if (!linea) return null;
+    const extras = db
+      .prepare(`SELECT nombre, precio FROM linea_extras WHERE linea_id = ?`)
+      .all(log.linea_anulada_id) as { nombre: string; precio: number }[];
+    return {
+      logId: log.id,
+      tipo: "comanda",
+      anulacion: true,
+      motivoAnulacion: linea.motivo_anulacion,
+      mesa: linea.mesa,
+      camarero: linea.camarero ?? "",
+      hora: (linea.enviado_en ?? new Date().toISOString()).slice(11, 16),
+      lineas: [{
+        cantidad: linea.cantidad,
+        nombre: linea.nombre,
+        notas: linea.notas,
+        extras,
+      }],
+    };
+  }
+
   if (log.ronda_id) {
     const cab = db
       .prepare(
@@ -118,7 +206,8 @@ function construirTicket(log: LogRow, destinoId: string): TicketData | null {
         `SELECT l.id, l.cantidad, p.nombre, l.precio_unitario, p.tipo_iva
            FROM lineas_comanda l
            JOIN productos p ON p.id = l.producto_id
-          WHERE l.comanda_id = (SELECT comanda_id FROM pagos WHERE id = ?)`
+          WHERE l.comanda_id = (SELECT comanda_id FROM pagos WHERE id = ?)
+            AND COALESCE(l.anulada, 0) = 0`
       )
       .all(log.pago_id) as {
         id: string; cantidad: number; nombre: string; precio_unitario: number; tipo_iva: number;
@@ -133,7 +222,16 @@ function construirTicket(log: LogRow, destinoId: string): TicketData | null {
 
     // El ticket que se entrega al cliente muestra el TOTAL de la cuenta,
     // no el importe del pago (que puede ser un parcial de un pago partido).
-    const totalCuenta = lineas.reduce((acc, l) => acc + l.cantidad * l.precio_unitario, 0);
+    const bruto = lineas.reduce((acc, l) => acc + l.cantidad * l.precio_unitario, 0);
+    const dtoRow = db
+      .prepare(
+        `SELECT c.descuento_tipo AS tipo, COALESCE(c.descuento_valor, 0) AS valor
+           FROM comandas c JOIN pagos pg ON pg.comanda_id = c.id WHERE pg.id = ?`
+      )
+      .get(log.pago_id) as { tipo: string | null; valor: number } | undefined;
+    const descuento = eurosDescuento(bruto, dtoRow?.tipo ?? null, dtoRow?.valor ?? 0);
+    const totalCuenta = Math.round((bruto - descuento + Number.EPSILON) * 100) / 100;
+    const factorIva = bruto > 0 ? (bruto - descuento) / bruto : 1;
 
     // ¿Este pago generó una factura a empresa? Entonces el papel que sale
     // no es un simple ticket: es el documento fiscal completo.
@@ -163,7 +261,7 @@ function construirTicket(log: LogRow, destinoId: string): TicketData | null {
     const porTipo = new Map<number, number>();
     for (const l of lineas) {
       const t = l.tipo_iva ?? 10;
-      porTipo.set(t, (porTipo.get(t) ?? 0) + l.cantidad * l.precio_unitario);
+      porTipo.set(t, (porTipo.get(t) ?? 0) + l.cantidad * l.precio_unitario * factorIva);
     }
     const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
     const desgloseSimpl = [...porTipo.entries()]
@@ -184,6 +282,7 @@ function construirTicket(log: LogRow, destinoId: string): TicketData | null {
         precio: l.precio_unitario, tipoIva: l.tipo_iva, extras: extrasDe(l.id),
       })),
       total: Number(totalCuenta.toFixed(2)),
+      descuento: descuento > 0 ? descuento : undefined,
       metodo: cab.metodo,
       esCopia: log.es_copia === 1,
       simplificada: pagoRow?.numero_simpl
@@ -307,7 +406,8 @@ async function procesarDestino(destinoId: string, logs: LogRow[]) {
 function cicloCola() {
   const pendientes = db
     .prepare(
-      `SELECT id, ronda_id, pago_id, punto_destino_id, intentos, es_copia, ultimo_intento_en
+      `SELECT id, ronda_id, pago_id, punto_destino_id, intentos, es_copia, ultimo_intento_en,
+              COALESCE(es_anulacion, 0) AS es_anulacion, linea_anulada_id
          FROM log_impresion WHERE estado = 'pendiente' ORDER BY creado_en`
     )
     .all() as LogRow[];

@@ -7,6 +7,11 @@ export interface TicketData {
    * factura como original, así que el papel sale marcado como COPIA.
    */
   esCopia?: boolean;
+  /** Aviso a cocina: retirar un plato que ya se había enviado. */
+  anulacion?: boolean;
+  motivoAnulacion?: string | null;
+  /** Euros descontados de la cuenta, para imprimirlos antes del total. */
+  descuento?: number;
   mesa: string | null;
   camarero: string;
   hora: string;

@@ -92,8 +92,16 @@ historialRouter.get("/", requireAuth, requireRole("admin"), (req, res) => {
               m.nombre AS mesa, u.nombre AS camarero,
               f.id AS facturaId, f.serie AS factura_serie, f.numero AS factura_numero,
               f.ejercicio AS factura_ejercicio, f.cliente_razon_social,
-              (SELECT COALESCE(SUM(l.cantidad), 0) FROM lineas_comanda l WHERE l.comanda_id = c.id) AS unidades,
-              (SELECT COALESCE(SUM(l.cantidad * l.precio_unitario), 0) FROM lineas_comanda l WHERE l.comanda_id = c.id) AS total_cuenta
+              (SELECT COALESCE(SUM(l.cantidad), 0) FROM lineas_comanda l
+                WHERE l.comanda_id = c.id AND COALESCE(l.anulada, 0) = 0) AS unidades,
+              (SELECT CASE
+                  WHEN c.descuento_tipo = 'porcentaje' THEN bruto * (1.0 - MIN(COALESCE(c.descuento_valor, 0), 100) / 100.0)
+                  WHEN c.descuento_tipo = 'importe' THEN MAX(0, bruto - COALESCE(c.descuento_valor, 0))
+                  ELSE bruto
+                END
+                FROM (SELECT COALESCE(SUM(cantidad * precio_unitario), 0) AS bruto
+                        FROM lineas_comanda
+                       WHERE comanda_id = c.id AND COALESCE(anulada, 0) = 0)) AS total_cuenta
          FROM pagos pg
          JOIN comandas c ON c.id = pg.comanda_id
          JOIN usuarios u ON u.id = c.camarero_id

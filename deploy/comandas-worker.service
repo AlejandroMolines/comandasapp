@@ -1,0 +1,16 @@
+[Unit]
+Description=Comandas — cola de impresión
+After=network.target comandas-backend.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/comandas/apps/printer-worker
+Environment=NODE_ENV=production
+Environment=DB_PATH=/var/lib/comandas/local.sqlite
+Environment=BACKEND_URL=http://127.0.0.1:3000
+ExecStart=/usr/bin/node dist/worker.js
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

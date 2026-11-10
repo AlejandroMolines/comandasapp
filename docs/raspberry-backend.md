@@ -170,17 +170,14 @@ SELECT m.nombre, c.creado_en FROM comandas c JOIN mesas m ON m.id = c.mesa_id
 
 ## Pendiente
 
-- **Seguridad:** JWT firmado en vez de base64 sin firma, y bcrypt para PIN y
-  contraseña. Marcado con `TODO` en el código. Imprescindible antes de exponer
-  nada fuera de la LAN.
-- **Backup automático** de la BD. Es el riesgo real del sistema. La forma
-  correcta con SQLite no es copiar el archivo (puede estar a media escritura)
-  sino `sqlite3 local.sqlite ".backup /media/usb/comandas-$(date +%F).sqlite"`,
-  que es consistente aunque la BD esté en uso. Con un temporizador de systemd
-  de madrugada y rotación de 30 días.
-- **Limpieza de `log_impresion`**: crece indefinidamente y guarda los bytes de
-  cada ticket. Conviene borrar lo que está en `ok` de hace más de una semana. Los
-  datos de negocio (`comandas`, `pagos`, `facturas`) **no se tocan nunca**.
+- **No publicar el puerto 3000 en internet.** En la LAN el token va firmado
+  (HMAC) y los PIN y contraseñas con scrypt. La clave está en `token.secret`,
+  al lado de la base.
+- **Backup automático**: `scripts/mantenimiento.mjs` más el temporizador de
+  systemd. Ver [MANTENIMIENTO.md](../MANTENIMIENTO.md) y `deploy/instalar-raspberry.sh`.
+- **Limpieza de `log_impresion`**: el mismo script borra lo que está en `ok`
+  de hace más de una semana. Los datos de negocio no se tocan.
 - **Sync con el Cloud**: la tabla `eventos_sync` está creada pero no se rellena.
-- **Idempotencia de rondas**: aceptar un `rondaId` del cliente, como ya se hace
-  con el `id` de comanda.
+  No hace falta para que un local funcione.
+- **Idempotencia de rondas**: `POST /comandas/:id/rondas` acepta `rondaId` del
+  cliente y no duplica un reintento.

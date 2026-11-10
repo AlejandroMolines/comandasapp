@@ -130,6 +130,9 @@ function renderTicket(ticket: TicketData): Buffer {
     b.separator();
     b.line(columnas("Base imponible", `${s.baseImponible.toFixed(2)}`, ANCHO));
     b.line(columnas("Total IVA", `${s.cuotaIva.toFixed(2)}`, ANCHO));
+    if ((ticket.descuento ?? 0) > 0) {
+      b.line(columnas("Descuento", `-${ticket.descuento!.toFixed(2)}`, ANCHO));
+    }
 
     b.align("center").bold(true).sizeBig();
     b.line(`TOTAL: ${(ticket.total ?? 0).toFixed(2)} EUR`);
@@ -147,6 +150,7 @@ function renderTicket(ticket: TicketData): Buffer {
 
   // ── Comanda de cocina ──────────────────────────────────────────────────
   b.align("center").sizeBig().bold(true);
+  if (ticket.anulacion) b.line("*** ANULADO ***");
   b.line(ticket.mesa ? `MESA ${ticket.mesa}` : "PARA LLEVAR");
   b.bold(false).sizeNormal();
   b.line(`${ticket.hora}  ·  ${ticket.camarero}`);
@@ -161,6 +165,9 @@ function renderTicket(ticket: TicketData): Buffer {
       b.bold(true).line(`   >> ${ex.nombre}`).bold(false);
     }
     if (l.notas) b.bold(true).line(`   >> ${l.notas}`).bold(false);
+  }
+  if (ticket.anulacion && ticket.motivoAnulacion) {
+    b.bold(true).line(`Motivo: ${ticket.motivoAnulacion}`).bold(false);
   }
 
   // Salvaguarda: si por lo que sea un pago llega sin datos fiscales

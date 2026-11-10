@@ -52,6 +52,8 @@ export type AccionPendiente =
         lineas: { productoId: string; cantidad: number; notas?: string; extraIds?: string[] }[];
         /** false = solo guardar en la cuenta, sin sacar papel */
         imprimir?: boolean;
+        /** Mismo uuid de la acción: el servidor no duplica la ronda si el reintento llega dos veces. */
+        rondaId?: string;
       };
     };
 
@@ -104,7 +106,11 @@ async function vaciarColaInterno(): Promise<void> {
         } else {
           await api(`/comandas/${accion.payload.comandaId}/rondas`, {
             method: "POST",
-            body: { lineas: accion.payload.lineas, imprimir: accion.payload.imprimir ?? true },
+            body: {
+              lineas: accion.payload.lineas,
+              imprimir: accion.payload.imprimir ?? true,
+              rondaId: accion.payload.rondaId,
+            },
           });
         }
         cola.shift();

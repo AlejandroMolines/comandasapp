@@ -3,28 +3,26 @@ import { v4 as uuid } from "uuid";
 import { z } from "zod";
 import { db } from "../../db/connection.js";
 import { requireAuth } from "../../middleware/auth.js";
+import { r2, resumenCuenta } from "../../lib/cuenta.js";
 import { emitirFactura, ErrorFactura, type LineaFactura } from "../facturas/service.js";
 import { getAjuste } from "../ajustes/routes.js";
 
 export const pagosRouter = Router();
 const RESTAURANTE_ID = process.env.RESTAURANTE_ID ?? "restaurante-demo";
 
-/** total de la comanda a partir del snapshot de precios de sus líneas */
-function totalComanda(comandaId: string): number {
-  const fila = db
+/** Líneas vivas, con el descuento repartido para que el IVA salga sobre lo cobrado. */
+function lineasFacturables(comandaId: string): LineaFactura[] {
+  const lineas = db
     .prepare(
-      `SELECT COALESCE(SUM(cantidad * precio_unitario), 0) AS total
-         FROM lineas_comanda WHERE comanda_id = ?`
+      `SELECT p.nombre, l.cantidad, l.precio_unitario, p.tipo_iva
+         FROM lineas_comanda l JOIN productos p ON p.id = l.producto_id
+        WHERE l.comanda_id = ? AND COALESCE(l.anulada, 0) = 0`
     )
-    .get(comandaId) as { total: number };
-  return Number(fila.total.toFixed(2));
-}
-
-function totalPagado(comandaId: string): number {
-  const fila = db
-    .prepare(`SELECT COALESCE(SUM(importe), 0) AS total FROM pagos WHERE comanda_id = ?`)
-    .get(comandaId) as { total: number };
-  return Number(fila.total.toFixed(2));
+    .all(comandaId) as LineaFactura[];
+  const cuenta = resumenCuenta(comandaId);
+  if (cuenta.descuento <= 0 || cuenta.bruto <= 0) return lineas;
+  const factor = (cuenta.bruto - cuenta.descuento) / cuenta.bruto;
+  return lineas.map((l) => ({ ...l, precio_unitario: r2(l.precio_unitario * factor) }));
 }
 
 // El total lo necesita el camarero ANTES de cobrar (para cantar la cuenta).
@@ -34,9 +32,7 @@ pagosRouter.get("/comandas/:comandaId/cuenta", requireAuth, (req, res) => {
     .get(req.params.comandaId, RESTAURANTE_ID) as { id: string; estado: string } | undefined;
   if (!comanda) return res.status(404).json({ error: "Comanda no encontrada" });
 
-  const total = totalComanda(comanda.id);
-  const pagado = totalPagado(comanda.id);
-  res.json({ comandaId: comanda.id, total, pagado, pendiente: Number((total - pagado).toFixed(2)) });
+  res.json({ comandaId: comanda.id, ...resumenCuenta(comanda.id) });
 });
 
 const pagoSchema = z.object({
@@ -66,9 +62,9 @@ pagosRouter.post("/comandas/:comandaId/pagos", requireAuth, (req, res) => {
     return res.status(409).json({ error: `La comanda ya está ${comanda.estado}` });
   }
 
-  const total = totalComanda(comanda.id);
-  const pagado = totalPagado(comanda.id);
-  const pendiente = Number((total - pagado).toFixed(2));
+  const cuenta = resumenCuenta(comanda.id);
+  const { total, pagado } = cuenta;
+  const pendiente = cuenta.pendiente;
 
   // Toleramos 1 céntimo de redondeo, pero no cobrar de más "de verdad":
   // un importe mayor que lo pendiente casi siempre es un error de tecleo.
@@ -129,13 +125,7 @@ pagosRouter.post("/comandas/:comandaId/pagos", requireAuth, (req, res) => {
     // Factura a empresa: se emite DENTRO de la transacción para que no pueda
     // quedar un pago sin su factura (ni una factura sin su pago).
     if (empresaId) {
-      const lineas = db
-        .prepare(
-          `SELECT p.nombre, l.cantidad, l.precio_unitario, p.tipo_iva
-             FROM lineas_comanda l JOIN productos p ON p.id = l.producto_id
-            WHERE l.comanda_id = ?`
-        )
-        .all(comanda.id) as LineaFactura[];
+      const lineas = lineasFacturables(comanda.id);
       factura = emitirFactura({
         empresaId,
         comandaId: comanda.id,

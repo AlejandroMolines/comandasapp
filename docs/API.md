@@ -33,16 +33,21 @@ Hay **dos niveles de token**, ambos enviados como `Authorization: Bearer <token>
 | **Restaurante** | `POST /auth/restaurante` | Listar perfiles y entrar en uno. Nada más. |
 | **Usuario** | `POST /auth/entrar` | Todo el resto de la API. |
 
-El token de usuario lleva `usuarioId`, `restauranteId`, `rol` y `dispositivoId`.
-El middleware `requireAuth` comprueba en cada petición que **el usuario sigue
-existiendo y está activo** en la base de datos; si no, responde `401` y la PWA
-limpia la sesión y vuelve al login.
+El token de usuario lleva `usuarioId`, `restauranteId`, `rol` y `dispositivoId`,
+firmado con HMAC-SHA256. `requireAuth` **no se fía del rol escrito en el token**:
+comprueba la firma y lee de la base que el usuario siga activo y cuál es su rol
+ahora mismo. Si no, responde `401` y la PWA limpia la sesión y vuelve al login.
 
-> **Aviso de seguridad, importante para producción:** el token es un JSON en
-> base64 **sin firmar**, y los PIN y la contraseña del restaurante se guardan en
-> texto plano. Es aceptable en una LAN cerrada donde el riesgo real es bajo, pero
-> antes de exponer nada a internet hay que cambiarlo por JWT firmado y bcrypt.
-> Está marcado con `TODO` en `middleware/auth.ts` y `usuarios/routes.ts`.
+Los PIN y la contraseña del restaurante se guardan con scrypt. Si una base
+antigua los tiene en claro, el primer login correcto los reescribe.
+
+La clave de firma es `TOKEN_SECRET` o, si no está, el archivo `token.secret`
+junto a la base de datos (no se sube a git). El worker de impresión presenta
+esa misma clave al conectar por WebSocket; sin ella el backend ignora los
+eventos de impresión.
+
+> Sigue siendo un servicio de la LAN del local. Firmar el token no lo hace
+> apto para publicarlo en internet.
 
 **Roles:** `admin` y `camarero`. Los endpoints marcados con 🔒 exigen `admin`.
 
@@ -313,6 +318,11 @@ Enviar productos a cocina.
 { "lineas": [ { "productoId": "...", "cantidad": 2, "notas": "Muy hecho, sin sal" } ] }
 ```
 → `201` `{ "rondaId", "avisosSinDestino": [], "destinos": ["..."], "impreso": true }`
+→ `200` con `"duplicada": true` si llega otra vez el mismo `rondaId` (reintento
+  tras un corte: no se vuelve a imprimir ni se duplican las líneas).
+
+`rondaId` (UUID, opcional) es el identificador que manda el cliente. `cantidad`
+máxima 99. Un producto agotado responde `400`. Una comanda cerrada responde `409`.
 
 **`imprimir`** (booleano, por defecto `true`) separa dos acciones distintas:
 - `true` -> **guardar e imprimir**: entra en la cuenta y sale el papel en cocina.
@@ -351,7 +361,33 @@ Mover o unir una cuenta a otra mesa.
   su mesa se libera. **`comandaId` es entonces la comanda de destino**, ojo.
 
 Los precios y las impresoras resueltas no se recalculan: son histórico de lo ya
-pedido e impreso.
+pedido e impreso. Una comanda sin líneas deja la mesa destino libre: abrir y
+salir sin pedir no ocupa la mesa.
+
+### `POST /comandas/:id/lineas/:lineaId/anular`
+
+```json
+{ "motivo": "El cliente ya no lo quiere", "cantidad": 1 }
+```
+
+`cantidad` es opcional: si no viene, se anula la línea entera. La fila no se
+borra (cocina ya pudo verla). Si el plato se había encolado a una impresora,
+sale un ticket `ANULADO` al mismo destino. No se permite si el cobro ya hecho
+superaría lo que quedaría.
+
+### `PUT /comandas/:id/descuento`
+
+```json
+{ "tipo": "porcentaje", "valor": 10, "motivo": "Cortesía" }
+```
+
+`tipo`: `porcentaje` (1–100), `importe` (euros) o `ninguno` para quitarlo. Se
+aplica al total de las líneas no anuladas y al desglose de IVA.
+
+### `POST /comandas/:id/cerrar`
+
+Cierra la comanda cuando no queda nada por cobrar (cuenta a cero tras anular
+o un descuento del 100 %) y libera la mesa. Si aún hay pendiente, `400`.
 
 ---
 

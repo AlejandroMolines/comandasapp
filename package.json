@@ -5,7 +5,8 @@
   "scripts": {
     "start:all": "node scripts/dev.mjs --fake",
     "dev:raspberry": "pnpm --filter raspberry-backend dev",
-    "build": "pnpm -r build"
+    "build": "pnpm -r build",
+    "test": "pnpm --filter raspberry-backend test"
   },
   "devDependencies": {
     "typescript": "^5.5.4"

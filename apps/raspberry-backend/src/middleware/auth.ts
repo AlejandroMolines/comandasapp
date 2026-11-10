@@ -1,10 +1,12 @@
 import type { Request, Response, NextFunction } from "express";
 import type { RolUsuario } from "@comandas/shared-types";
 import { db } from "../db/connection.js";
+import { firmarPayload, leerToken } from "../lib/secretos.js";
 
-// NOTA: para el esqueleto, el "token" es un JSON en base64 sin firmar.
-// TODO antes de producción: sustituir por JWT firmado (jsonwebtoken) y
-// pin_hash con bcrypt en vez de comparación en texto plano (ver usuarios/routes.ts).
+// Token HMAC-SHA256 (no es un JWT de terceros: no hace falta ninguna
+// dependencia ni salir de la máquina). El rol NO se fía del token: se lee
+// de la base de datos en cada petición, así que cambiar o desactivar a
+// alguien tiene efecto al momento.
 
 export interface TokenPayload {
   usuarioId: string;
@@ -23,7 +25,7 @@ declare global {
 }
 
 export function firmarToken(payload: TokenPayload): string {
-  return Buffer.from(JSON.stringify(payload)).toString("base64");
+  return firmarPayload(payload);
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
@@ -31,28 +33,20 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!header?.startsWith("Bearer ")) {
     return res.status(401).json({ error: "Falta token de autenticación" });
   }
-  let payload: TokenPayload;
-  try {
-    const raw = Buffer.from(header.slice(7), "base64").toString("utf-8");
-    payload = JSON.parse(raw) as TokenPayload;
-  } catch {
+  const payload = leerToken<TokenPayload>(header.slice(7));
+  if (!payload?.usuarioId || !payload.restauranteId) {
     return res.status(401).json({ error: "Token inválido" });
   }
 
-  // El token no lleva firma, así que su contenido no es de fiar por sí solo.
-  // Comprobamos que ese usuario SIGUE existiendo y activo — si no, cualquier
-  // insert que referencie camarero_id (rondas, comandas, pagos...) reventaría
-  // con un "FOREIGN KEY constraint failed" sin control. Esto pasa sobre todo
-  // tras borrar/recrear la base de datos con el navegador aún con un token
-  // antiguo guardado: se corta aquí, limpio, en vez de crashear más abajo.
   const usuario = db
-    .prepare(`SELECT 1 FROM usuarios WHERE id = ? AND restaurante_id = ? AND activo = 1`)
-    .get(payload.usuarioId, payload.restauranteId);
+    .prepare(`SELECT rol FROM usuarios WHERE id = ? AND restaurante_id = ? AND activo = 1`)
+    .get(payload.usuarioId, payload.restauranteId) as { rol: RolUsuario } | undefined;
   if (!usuario) {
     return res.status(401).json({ error: "Tu sesión ya no es válida, vuelve a iniciar sesión" });
   }
 
-  req.auth = payload;
+  // El rol efectivo es el de la BD, no el que viniera escrito en el token.
+  req.auth = { ...payload, rol: usuario.rol };
   next();
 }
 

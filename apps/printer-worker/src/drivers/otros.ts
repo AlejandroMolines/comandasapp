@@ -12,7 +12,9 @@ export const escposUsbDriver: DestinoDriver = {
   async enviar(destino: PuntoDestinoRow, ticket: TicketData): Promise<ResultadoEnvio> {
     const ruta = String(destino.config.rutaDispositivo ?? "");
     const b = new EscPosBuilder().init().align("center").sizeBig().bold(true);
+    if (ticket.anulacion) b.line("*** ANULADO ***");
     b.line(ticket.mesa ? `MESA ${ticket.mesa}` : "PARA LLEVAR");
+    if (ticket.motivoAnulacion) b.bold(false).sizeNormal().line(ticket.motivoAnulacion).sizeBig().bold(true);
     b.bold(false).sizeNormal().align("left").separator();
     for (const l of ticket.lineas) {
       b.line(`${l.cantidad} x ${l.nombre}`);

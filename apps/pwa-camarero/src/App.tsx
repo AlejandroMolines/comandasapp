@@ -145,6 +145,7 @@ function FlujoSala({ onSalir, embebido = false }: { onSalir?: () => void; embebi
     socketRef.current = s;
     s.on("mesa:liberada", () => void recargar());
     s.on("ronda:creada", () => void recargar());
+    s.on("comanda:actualizada", () => { void recargar(); setRecargaComanda((n) => n + 1); });
     s.on("producto:disponibilidad", () => void recargar());
     s.on("impresion:fallida", (d: { destino: string }) => avisar(`⚠ ${d.destino} no responde — comanda sin imprimir`, true));
     return () => { off(); s.disconnect(); };
@@ -177,9 +178,10 @@ function FlujoSala({ onSalir, embebido = false }: { onSalir?: () => void; embebi
 
   const enviarRonda = async (lineas: Linea[], imprimir: boolean) => {
     if (vista.v !== "comanda") return;
+    const rondaId = uuid();
     await encolar({
-      uuid: uuid(), tipo: "enviar_ronda",
-      payload: { comandaId: vista.comandaId, lineas: lineas.map((l) => ({
+      uuid: rondaId, tipo: "enviar_ronda",
+      payload: { comandaId: vista.comandaId, rondaId, lineas: lineas.map((l) => ({
         productoId: l.productoId, cantidad: l.cantidad, notas: l.notas,
         extraIds: (l.extras ?? []).map((e) => e.id),
       })), imprimir },

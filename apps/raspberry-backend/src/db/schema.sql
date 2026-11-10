@@ -233,7 +233,12 @@ CREATE TABLE IF NOT EXISTS comandas (
   camarero_id TEXT NOT NULL REFERENCES usuarios(id),
   estado TEXT NOT NULL DEFAULT 'abierta' CHECK (estado IN ('abierta','en_cocina','servida','cerrada','cancelada')),
   creado_en TEXT NOT NULL,
-  cerrado_en TEXT
+  cerrado_en TEXT,
+  -- Descuento de la cuenta: 'porcentaje' (0-100) o 'importe' (euros).
+  -- Se aplica al cobrar sobre las líneas no anuladas.
+  descuento_tipo TEXT,
+  descuento_valor REAL NOT NULL DEFAULT 0,
+  descuento_motivo TEXT
 );
 
 CREATE TABLE IF NOT EXISTS rondas (
@@ -254,7 +259,13 @@ CREATE TABLE IF NOT EXISTS lineas_comanda (
   notas TEXT,
   estado TEXT NOT NULL DEFAULT 'pendiente',
   impresora_resuelta_id TEXT REFERENCES puntos_destino(id),
-  enviado_en TEXT
+  enviado_en TEXT,
+  -- Anulación: la línea sigue en el histórico (cocina ya la vio) pero
+  -- no suma en la cuenta ni en los informes.
+  anulada INTEGER NOT NULL DEFAULT 0,
+  motivo_anulacion TEXT,
+  anulada_en TEXT,
+  anulada_por TEXT
 );
 
 CREATE TABLE IF NOT EXISTS pagos (
@@ -290,7 +301,10 @@ CREATE TABLE IF NOT EXISTS log_impresion (
   -- Marca de reimpresión. Legalmente NO se puede emitir dos veces el mismo
   -- número de factura como original: la segunda copia debe salir identificada
   -- como COPIA / DUPLICADO.
-  es_copia INTEGER NOT NULL DEFAULT 0
+  es_copia INTEGER NOT NULL DEFAULT 0,
+  -- Aviso a cocina de que hay que retirar un plato ya enviado.
+  es_anulacion INTEGER NOT NULL DEFAULT 0,
+  linea_anulada_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS eventos_sync (

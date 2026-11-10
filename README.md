@@ -62,10 +62,19 @@ pnpm install
 pnpm start:all --fake     # --fake levanta una impresora simulada
 ```
 
-El script compila la PWA, arranca el backend, crea el admin si no existe, lanza
-el worker y Vite, y muestra las URLs (incluida la del móvil).
+El script compila la PWA, arranca el backend, crea el admin si no existe, y si
+el local está vacío carga una sala, una carta y las impresoras de demostración
+apuntando a `127.0.0.1:9100`. Luego lanza el worker y Vite, y muestra las URLs
+(incluida la del móvil).
 
 **Login de demostración:** `admin@demo.com` / `admin` → perfil Admin → PIN `1234`
+Camarero de la semilla: perfil **Ana** → PIN `1111`
+
+Tests del backend (no hace falta el Raspberry):
+
+```bash
+pnpm test
+```
 
 Desde el móvil, en la misma WiFi: `http://<ip-que-indica-el-script>:3000`
 
@@ -104,12 +113,15 @@ El turno ya está abierto: no hay que abrirlo nunca.
 En desarrollo. El flujo completo de servicio funciona y está probado, pero
 **antes de usarlo en un restaurante real** hay que resolver:
 
-1. **Seguridad.** El token es base64 sin firmar y los PIN y contraseñas se
-   guardan en texto plano. Es aceptable en una LAN cerrada, pero hay que pasar a
-   JWT firmado y bcrypt antes de exponer nada. Está marcado con `TODO` en el código.
-2. **Backup automático.** Existe el script (`scripts/mantenimiento.mjs`) pero hay
-   que instalarlo como tarea de systemd. Es el riesgo real: el día que muera la
-   tarjeta SD se pierde el histórico.
+1. **Seguridad de la LAN.** El token va firmado con HMAC y los PIN y contraseñas
+   con scrypt (los que estuvieran en claro se reescriben al entrar). El rol se
+   lee de la base, no del token. Sigue siendo un servidor de la red del local:
+   no lo expongas a internet. La clave vive en `data/token.secret` (o en
+   `TOKEN_SECRET`); no se sube al repositorio.
+2. **Backup automático.** El script (`apps/raspberry-backend/scripts/mantenimiento.mjs`)
+   ya comprueba la copia. Para que salte solo cada noche, `sudo bash deploy/instalar-raspberry.sh`.
+   Sigue siendo el riesgo real: el día que muera la tarjeta SD se pierde el histórico.
+   Ver [docs/MANTENIMIENTO.md](./docs/MANTENIMIENTO.md).
 3. **Verifactu.** Obligatorio en 2027 (enero para sociedades, julio para
    autónomos). Falta el hash encadenado, el QR y el registro de eventos. La
    sanción por software no conforme es de 50.000 € por ejercicio.
@@ -359,8 +371,8 @@ src/version.ts), asi que se puede confirmar la build sin tocar el navegador.
 
 - Sync Raspberry ↔ Cloud: rellenar `eventos_sync` (outbox) desde las escrituras y el proceso que las empuja al Cloud.
 - Vistas admin en la PWA (gestión de carta/destinos/turnos desde el PC — hoy se hace vía API).
-- Idempotencia de rondas: aceptar `rondaId` del cliente en `POST /comandas/:id/rondas` para deduplicar reintentos tras corte de red a mitad de respuesta (las comandas ya lo soportan con `id`).
-- Sustituir el "token" base64 sin firmar por JWT firmado, y el PIN en texto plano por hash (bcrypt) — está marcado con `TODO` en `middleware/auth.ts` y `modules/usuarios/routes.ts`.
+- Idempotencia de rondas: el cliente envía `rondaId` y un reintento no duplica la comanda.
+- Tokens HMAC y PIN/contraseña con scrypt. El rol de cada petición se lee de la base.
 - `pwa-camarero`: la app React con IndexedDB + Service Worker para el modo offline.
 
 

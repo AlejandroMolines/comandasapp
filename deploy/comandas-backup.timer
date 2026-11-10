@@ -1,0 +1,10 @@
+[Unit]
+Description=Copia nocturna de la base de comandas
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+Persistent=true
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target

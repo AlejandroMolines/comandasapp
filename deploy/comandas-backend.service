@@ -1,0 +1,16 @@
+[Unit]
+Description=Comandas — API local del restaurante
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/comandas/apps/raspberry-backend
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=DB_PATH=/var/lib/comandas/local.sqlite
+ExecStart=/usr/bin/node dist/server.js
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
