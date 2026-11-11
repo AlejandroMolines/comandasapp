@@ -3,8 +3,7 @@
  * Arranca TODO el sistema de desarrollo de una vez:
  *   backend + bootstrap del admin + printer-worker + PWA (+ impresora falsa con --fake)
  *
- * Multiplataforma: funciona en Linux (Arch incluido), macOS y Windows,
- * porque es Node puro y usa shell:true para resolver pnpm/pnpm.cmd.
+ * Multiplataforma: funciona en Linux (Arch incluido), macOS y Windows.
  *
  * Uso:   node scripts/dev.mjs [--fake]
  *   --fake  arranca también una impresora térmica falsa en :9100
@@ -16,6 +15,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { pnpmInvocation } from "./package-manager.mjs";
 
 const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const conFake = process.argv.includes("--fake");
@@ -30,7 +30,7 @@ function lanzar(nombre, cmd, args, opts = {}) {
   const p = spawn(cmd, args, {
     cwd: opts.cwd ?? raiz,
     env: { ...process.env, ...opts.env },
-    shell: true, // en Windows resuelve pnpm.cmd; en Linux no molesta
+    shell: esWin,
     detached: !esWin, // POSIX: cada hijo lidera su grupo -> kill(-pid) mata el árbol entero
   });
   hijos.push(p);
@@ -94,14 +94,16 @@ async function main() {
   if (!fs.existsSync(path.join(raiz, "node_modules"))) {
     log("sys", "instalando dependencias (primera vez)...\n");
     await new Promise((res, rej) => {
-      const p = spawn("pnpm", ["install"], { cwd: raiz, shell: true, stdio: "inherit" });
+      const pnpm = pnpmInvocation(["install"]);
+      const p = spawn(pnpm.cmd, pnpm.args, { cwd: raiz, shell: esWin, stdio: "inherit" });
       p.on("exit", (c) => (c === 0 ? res() : rej(new Error("pnpm install falló"))));
     });
   }
   if (!fs.existsSync(path.join(raiz, "packages/shared-types/dist"))) {
     log("sys", "compilando shared-types...\n");
     await new Promise((res, rej) => {
-      const p = spawn("pnpm", ["--filter", "@comandas/shared-types", "build"], { cwd: raiz, shell: true, stdio: "inherit" });
+      const pnpm = pnpmInvocation(["--filter", "@comandas/shared-types", "build"]);
+      const p = spawn(pnpm.cmd, pnpm.args, { cwd: raiz, shell: esWin, stdio: "inherit" });
       p.on("exit", (c) => (c === 0 ? res() : rej(new Error("build de shared-types falló"))));
     });
   }
@@ -114,7 +116,8 @@ async function main() {
   // recompila SIEMPRE aquí, en cada arranque, sin excepción.
   log("sys", `compilando la PWA (versión: ${versionApp()})...\n`);
   await new Promise((res, rej) => {
-    const p = spawn("pnpm", ["--filter", "pwa-camarero", "build"], { cwd: raiz, shell: true, stdio: "inherit" });
+    const pnpm = pnpmInvocation(["--filter", "pwa-camarero", "build"]);
+    const p = spawn(pnpm.cmd, pnpm.args, { cwd: raiz, shell: esWin, stdio: "inherit" });
     p.on("exit", (c) => (c === 0 ? res() : rej(new Error("build de la PWA falló"))));
   });
   log("sys", "PWA compilada ✓\n");
@@ -130,7 +133,8 @@ async function main() {
   }
 
   // 1. Backend
-  lanzar("backend", "pnpm", ["--filter", "raspberry-backend", "dev"]);
+  const backendPnpm = pnpmInvocation(["--filter", "raspberry-backend", "dev"]);
+  lanzar("backend", backendPnpm.cmd, backendPnpm.args);
   log("sys", "esperando al backend en :3000...\n");
   const ok = await esperarSalud("http://127.0.0.1:3000/salud");
   if (!ok) { log("sys", "el backend no arranca — revisa los logs de arriba\n"); return matarTodo(); }
@@ -140,7 +144,7 @@ async function main() {
   for (const script of ["scripts/bootstrap-admin.mjs", "scripts/seed-demo.mjs"]) {
     await new Promise((res) => {
       const p = spawn("node", [script], {
-        cwd: path.join(raiz, "apps/raspberry-backend"), shell: true,
+        cwd: path.join(raiz, "apps/raspberry-backend"), shell: esWin,
       });
       p.stdout.on("data", (d) => log("sys", d.toString()));
       p.stderr.on("data", (d) => log("sys", d.toString()));
@@ -154,10 +158,12 @@ async function main() {
   }
 
   // 4. Worker de impresión
-  lanzar("worker", "pnpm", ["--filter", "printer-worker", "dev"]);
+  const workerPnpm = pnpmInvocation(["--filter", "printer-worker", "dev"]);
+  lanzar("worker", workerPnpm.cmd, workerPnpm.args);
 
   // 5. PWA
-  lanzar("pwa", "pnpm", ["--filter", "pwa-camarero", "dev"], {
+  const pwaPnpm = pnpmInvocation(["--filter", "pwa-camarero", "dev"]);
+  lanzar("pwa", pwaPnpm.cmd, pwaPnpm.args, {
     env: { VITE_API: "http://127.0.0.1:3000" },
   });
 
