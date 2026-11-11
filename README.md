@@ -85,6 +85,11 @@ Para desarrollar con recarga automática sigue existiendo `pnpm start:all`.
 
 La central está publicada en <https://comandasapp-theta.vercel.app>.
 
+El panel de superadmin de la central es privado. Define `SUPERADMIN_USER`,
+`SUPERADMIN_PASSWORD` y `SUPERADMIN_SESSION_SECRET` en las variables privadas
+de Vercel para poder entrar. `DEMO_RESTAURANT_URL` enlaza una instancia HTTPS
+separada del backend; la central no hospeda comandas.
+
 En el Raspberry (no hace falta para servir mesas), con la misma clave que
 `NUBE_TOKEN` en el proyecto de Vercel:
 
@@ -96,8 +101,10 @@ NUBE_TOKEN=la-clave-de-vercel
 Sin esas dos variables el proceso no llama a nadie. El estado de los locales
 se guarda en Vercel Blob, así que no se pierde al reiniciar la función.
 
-**Login de demostración:** `admin@demo.com` / `admin` → perfil Admin → PIN `1234`
-Camarero de la semilla: perfil **Ana** → PIN `1111`
+**Solo desarrollo local:** `admin@demo.com` / `admin` → perfil Admin → PIN `1234`.
+El camarero de semilla es **Ana** → PIN `1111`. En producción el bootstrap exige
+credenciales privadas configuradas por entorno. Ver
+[docs/superadmin.md](./docs/superadmin.md) para desplegar el panel y el backend de pruebas.
 
 Tests del backend (no hace falta el Raspberry):
 

@@ -13,6 +13,7 @@
 | [raspberry-backend.md](./raspberry-backend.md) | El backend: módulos, base de datos, logs |
 | [printer-worker.md](./printer-worker.md) | El worker de impresión: drivers, reintentos, ESC/POS |
 | [pwa-camarero.md](./pwa-camarero.md) | La app: diseño, offline-first, service worker |
+| [superadmin.md](./superadmin.md) | Acceso privado a la central y configuración del restaurante de pruebas |
 | [MODELO-DATOS.md](./MODELO-DATOS.md) | Las tablas y por qué están así |
 | [../FACTURACION.md](../FACTURACION.md) | Facturas a empresas, IVA y Verifactu |
 | [../CAJA-E-INFORMES.md](../CAJA-E-INFORMES.md) | Caja inicial fija e informes en Excel |
