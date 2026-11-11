@@ -45,10 +45,10 @@ comandas-app/
 └── docs/
 ```
 
-Monorepo con **pnpm workspaces**. Node 22 (fijado en `.nvmrc`: Node 26 rompe
-`better-sqlite3` y Node 20 es demasiado viejo para el pnpm actual).
+Monorepo con **pnpm workspaces**. Para desarrollo y Raspberry se usa Node 22
+(fijado en `.nvmrc`).
 
-## Arrancar en 30 segundos
+## Desarrollo local
 
 ```bash
 nvm use 22
@@ -59,9 +59,9 @@ pnpm start:all --fake      # --fake levanta una impresora simulada
 El script compila la PWA, arranca el backend, crea el admin si no existe, lanza
 el worker y Vite, y te dice por qué URL entrar (incluida la de tu móvil).
 
-Login: **admin@demo.com / admin** → perfil **Admin** → PIN **1234**
-
-Desde el móvil, en la misma WiFi: `http://<ip-que-indica-el-script>:3000`
+El comando levanta datos de demostración. Para una instalación real sigue
+[MANTENIMIENTO.md](./MANTENIMIENTO.md#instalar-en-un-raspberry-nuevo), que crea
+un acceso de administrador propio y no carga datos de prueba.
 
 ## Primeros pasos dentro de la app
 

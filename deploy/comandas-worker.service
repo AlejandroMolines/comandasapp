@@ -1,16 +1,28 @@
 [Unit]
 Description=Comandas — cola de impresión
-After=network.target comandas-backend.service
+After=network-online.target comandas-backend.service
+Wants=network-online.target
 
 [Service]
 Type=simple
+User=comandas
+Group=comandas
+SupplementaryGroups=dialout
 WorkingDirectory=/opt/comandas/apps/printer-worker
 Environment=NODE_ENV=production
 Environment=DB_PATH=/var/lib/comandas/local.sqlite
-Environment=BACKEND_URL=http://127.0.0.1:3000
+Environment=BACKEND_URL=https://localhost:3000
+Environment=NODE_EXTRA_CA_CERTS=/etc/comandas/tls/ca.pem
+EnvironmentFile=/etc/comandas/comandas.env
 ExecStart=/usr/bin/node dist/worker.js
 Restart=always
 RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/comandas
+UMask=0027
 
 [Install]
 WantedBy=multi-user.target
