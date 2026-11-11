@@ -49,9 +49,22 @@ export function normalizarPulso(body) {
           nombre: texto(i?.nombre, 80) || "Impresora",
           estado: texto(i?.estado, 20) || "desconocido",
         })),
+      diagnosticos: normalizarDiagnosticos(body?.diagnosticos),
       recibidoEn: new Date().toISOString(),
     },
   };
+}
+
+function normalizarDiagnosticos(valor) {
+  if (!Array.isArray(valor)) return [];
+  return valor.slice(-40).flatMap((item) => {
+    const id = texto(item?.id, 80);
+    const mensaje = texto(item?.mensaje, 500);
+    const nivel = item?.nivel === "error" ? "error" : item?.nivel === "aviso" ? "aviso" : "";
+    const fecha = texto(item?.fecha, 40);
+    if (!id || !mensaje || !nivel || !Number.isFinite(Date.parse(fecha))) return [];
+    return [{ id, mensaje, nivel, fecha }];
+  });
 }
 
 function entero(n) {

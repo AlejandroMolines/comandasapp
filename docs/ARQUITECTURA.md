@@ -149,7 +149,9 @@ conviene poner el journal de systemd en RAM para no desgastar la SD.
 
 `apps/nube` es un panel que se publica en Vercel. Cada Raspberry, si tiene
 `NUBE_URL` y `NUBE_TOKEN`, le manda un aviso cada 30 segundos: nombre, mesas
-ocupadas y si las impresoras responden. No manda tickets ni datos de clientes.
+ocupadas, impresoras, versión instalada y diagnósticos limitados a avisos y
+errores. No manda tickets, ventas ni datos de clientes. Además consulta cada
+cinco minutos si el superadmin publicó un commit nuevo de `main`.
 
 La central no está en el camino del servicio. Si Vercel o internet caen, el
 aviso falla y el bar sigue. El panel solo sirve para ver, desde fuera, qué
@@ -158,13 +160,12 @@ local ha dejado de llamar.
 Vercel no puede entrar al Raspberry (está detrás del router del bar). Por eso
 el local llama hacia fuera, y no al revés.
 
-Lo que esa central todavía no hace, y sigue siendo futuro:
+La central todavía no hace:
 
 1. Ver la facturación de varios locales desde casa.
 2. Copia de seguridad del histórico en la nube.
 3. Comparar entre locales.
-4. Actualizar la flota de Raspberries sin ir uno por uno.
-5. Informes fiscales agregados.
+4. Informes fiscales agregados.
 
 El aviso de «este local ha dejado de llamar» ya lo hace la central. El histórico
 de ventas sigue viviendo solo en el Raspberry: la copia que importa es la del

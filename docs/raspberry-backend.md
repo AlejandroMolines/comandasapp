@@ -91,23 +91,19 @@ multi-tenant. Migrar luego sería un infierno; ponerlo ahora es gratis.
 se crea al pedirlo. Un camarero no puede quedarse bloqueado porque el jefe no
 haya abierto caja.
 
-## Arrancar
+## Arrancar en desarrollo
 
 ```bash
 # Desarrollo (con recarga automática)
 pnpm --filter raspberry-backend dev
 
-# Producción
-pnpm --filter raspberry-backend build
-cp src/db/schema.sql dist/db/          # el schema no lo copia tsc
-cd apps/raspberry-backend
-NODE_ENV=production TLS_CERT_FILE=/etc/comandas/tls/fullchain.pem TLS_KEY_FILE=/etc/comandas/tls/private-key.pem CORS_ORIGINS=https://raspberry.local:3000 node dist/server.js
 ```
 
-Producción exige HTTPS. El certificado debe ser de confianza para los móviles
-y contener en sus SAN el nombre o IP que usan para abrir la app. Si el worker
-se conecta por HTTPS, configura `BACKEND_URL` con ese mismo nombre y añade la
-CA emisora a `NODE_EXTRA_CA_CERTS` en el servicio del worker.
+En un Raspberry de producción, usa el instalador guiado de
+[MANTENIMIENTO.md](./MANTENIMIENTO.md#instalar-en-un-raspberry-nuevo). Configura
+HTTPS con una CA local y sirve la PWA desde el mismo origen. Cada dispositivo
+debe confiar en el certificado CA para que el navegador habilite la PWA sin
+avisos.
 
 Al arrancar debe aparecer:
 
@@ -120,15 +116,9 @@ Al arrancar debe aparecer:
 Si falta la línea de «sirviendo PWA», el `:3000` responderá `Cannot GET /`: es
 que no encuentra la carpeta `dist` de la PWA (hay que compilarla).
 
-**El primer arranque necesita el bootstrap** para crear el restaurante y el
-admin:
-
-```bash
-cd apps/raspberry-backend && node scripts/bootstrap-admin.mjs
-# -> admin@demo.com / admin, perfil Admin con PIN 1234
-```
-
-Es idempotente: si ya existen, no hace nada.
+El instalador inicializa un restaurante vacío y crea el primer usuario Admin
+con las credenciales que introduce el propietario. El script de bootstrap es
+idempotente y se ejecuta una única vez durante la instalación.
 
 ## Variables de entorno
 

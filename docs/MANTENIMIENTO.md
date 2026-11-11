@@ -16,15 +16,72 @@ Usa el backup de SQLite (coherente aunque haya camareros cobrando), comprueba
 `integrity_check`, copia también `token.secret` (la clave de las sesiones) y
 borra las copias de más de 30 días. La facturación no se purga.
 
-## Arranque solo, sin que nadie inicie sesión
+## Instalar en un Raspberry nuevo
 
-Con la build hecha (`pnpm -r build` y el `schema.sql` copiado a `dist/db/`):
+Usa Raspberry Pi OS de 64 bits con conexión a internet durante la instalación.
+Desde la terminal del Raspberry, ejecuta:
 
 ```bash
-sudo bash deploy/instalar-raspberry.sh
+curl -fsSL https://raw.githubusercontent.com/AlejandroMolines/comandasapp/main/deploy/instalar-raspberry.sh | sudo bash
 ```
 
-Instala cuatro unidades de systemd:
+El asistente instala Node 22 y pnpm, compila la aplicación, configura HTTPS,
+crea un usuario de sistema sin permisos de administrador, inicializa una base
+vacía y te pide el nombre, email, contraseña y PIN del administrador. La
+contraseña debe tener al menos 16 caracteres. No se cargan mesas, carta ni
+datos de demostración: se configuran desde la aplicación. También puedes
+enlazar el restaurante con la supercentral para publicar versiones y consultar
+diagnósticos; necesitarás la URL de Vercel y el `NUBE_TOKEN` configurado allí.
+
+La aplicación queda en `/opt/comandas`; la base y el secreto de sesión viven en
+`/var/lib/comandas`; la configuración privada está en `/etc/comandas`. Las
+credenciales no se guardan en el repositorio ni en la configuración de systemd.
+La copia nocturna queda en `/var/backups/comandas`.
+
+### Primer acceso
+
+Abre `https://raspberry.local:3000` desde un dispositivo conectado a la WiFi del
+local. Si ese nombre no resuelve, usa la IP que imprime el instalador, por
+ejemplo `https://192.168.1.25:3000`.
+
+El instalador crea una autoridad certificadora local en
+`/etc/comandas/tls/ca.pem`. Para evitar la advertencia del navegador y permitir
+la instalación de la PWA, copia ese archivo a cada dispositivo y añádelo como
+certificado de confianza (en iPhone/iPad hay que instalar el perfil y habilitar
+su confianza; en Android/Windows/macOS se importa en el almacén de certificados
+de usuario). Después vuelve a abrir la URL por HTTPS e instala/añade Comandas a
+la pantalla de inicio desde el navegador. No compartas `/etc/comandas/tls/ca-key.pem`:
+esa clave privada solo debe permanecer en el Raspberry.
+
+### Actualizar
+
+Desde el Raspberry:
+
+```bash
+sudo bash /opt/comandas/deploy/actualizar-raspberry.sh
+```
+
+El actualizador guarda primero una copia SQLite coherente, descarga la versión
+de `main`, recompila y reinicia los servicios. Conserva la base de datos, la
+clave de sesión, el certificado y las credenciales. Si falla la compilación,
+vuelve a la versión de código anterior.
+
+Si el restaurante está enlazado a la supercentral, no hace falta ejecutar el
+comando por cada versión: el servicio consulta cada cinco minutos si hay un
+commit nuevo publicado. La actualización hace copia previa, instala ese commit
+exacto y reinicia backend y worker; el panel indica si cada local sigue
+pendiente. Si falla, se recupera el código anterior y el detalle aparece en
+**Diagnóstico remoto**. Los errores recientes del backend también se envían a la
+central. Esto requiere que el Raspberry tenga internet durante la actualización;
+la aplicación del restaurante continúa guardando los datos localmente.
+
+En instalaciones anteriores a la supercentral, vuelve a ejecutar el instalador
+actual desde una terminal interactiva para enlazar el local y configurar el
+comprobador automático.
+
+### Servicios instalados
+
+El instalador configura cuatro unidades de systemd para operar el local:
 
 | Unidad | Qué hace |
 |---|---|
@@ -33,10 +90,14 @@ Instala cuatro unidades de systemd:
 | `comandas-backup.service` | Una pasada del script de copia |
 | `comandas-backup.timer` | Esa pasada cada noche a las 04:30, y al encender si el Pi estaba apagado |
 
-Si hay un USB para las copias:
+Cuando enlazas la supercentral, añade `comandas-update-check.service` y su
+`timer`, que consulta cada cinco minutos si hay una nueva versión publicada.
+
+Si prefieres guardar las copias en un USB montado, puedes especificarlo durante
+la primera instalación:
 
 ```bash
-sudo DESTINO_BACKUP=/media/usb/comandas bash deploy/instalar-raspberry.sh
+curl -fsSL https://raw.githubusercontent.com/AlejandroMolines/comandasapp/main/deploy/instalar-raspberry.sh | sudo DESTINO_BACKUP=/media/usb/comandas bash
 ```
 
 ## Qué hacer con el hardware
