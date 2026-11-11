@@ -37,6 +37,7 @@ export function AltaCamarero() {
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center px-6 py-10">
+      <img src="/logo.png" alt="" className="mb-4 h-16 w-auto" />
       <h1 className="mb-1 text-2xl">Alta de camarero</h1>
       <p className="mb-6 text-sm text-muted-foreground">
         Este móvil quedará registrado en el local. El código del QR caduca en unos minutos.

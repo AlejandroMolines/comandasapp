@@ -155,14 +155,14 @@ export function App() {
   }
 
   if (cargando || !sesion) {
-    return <main className="pantalla-carga"><span className="marca">C</span><p>Comprobando acceso…</p></main>;
+    return <main className="pantalla-carga"><img src="/logo.png" alt="" className="marca-logo" /><p>Comprobando acceso…</p></main>;
   }
 
   if (!sesion.configurada || !sesion.autenticada) {
     return (
       <main className="pantalla-acceso">
         <section className="acceso-panel">
-          <span className="marca">C</span>
+          <img src="/logo.png" alt="" className="marca-logo" />
           <p className="sobretitulo">PANEL PRIVADO</p>
           <h1>Superadmin</h1>
           <p className="texto-intro">Controla el estado de los restaurantes y abre el entorno privado de pruebas.</p>
