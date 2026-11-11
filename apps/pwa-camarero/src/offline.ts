@@ -44,6 +44,7 @@ export async function cargarMaestros(): Promise<{ carta: CartaCompleta; zonas: Z
 
 export type AccionPendiente =
   | { uuid: string; tipo: "abrir_comanda"; payload: { id: string; turnoId: string; mesaId: string | null; tipo: string } }
+  | { uuid: string; tipo: "cerrar_comanda_vacia"; payload: { comandaId: string } }
   | {
       uuid: string;
       tipo: "enviar_ronda";
@@ -84,51 +85,68 @@ export function vaciarCola(): Promise<void> {
 }
 
 async function vaciarColaInterno(): Promise<void> {
-  {
-    let cola = (await get<AccionPendiente[]>(KEY_COLA)) ?? [];
-    while (cola.length > 0) {
-      const accion = cola[0];
-      try {
-        if (accion.tipo === "abrir_comanda") {
-          const r = await api<{ id: string }>("/comandas", { method: "POST", body: accion.payload });
-          // El servidor puede devolver OTRA comanda: si la mesa ya estaba
-          // abierta (p.ej. otro camarero la abrió mientras estábamos sin red),
-          // manda la que ya existe. Hay que adoptar ese id en las rondas que
-          // quedan por enviar, o irían a una comanda que no existe -> 404.
-          const idPedido = (accion.payload as { id?: string }).id;
-          if (r?.id && idPedido && r.id !== idPedido) {
-            for (const pendiente of cola) {
-              if (pendiente.tipo === "enviar_ronda" && pendiente.payload.comandaId === idPedido) {
-                pendiente.payload.comandaId = r.id;
-              }
-            }
-          }
-        } else {
-          await api(`/comandas/${accion.payload.comandaId}/rondas`, {
-            method: "POST",
-            body: {
-              lineas: accion.payload.lineas,
-              imprimir: accion.payload.imprimir ?? true,
-              rondaId: accion.payload.rondaId,
-            },
-          });
+  while (true) {
+    const cola = (await get<AccionPendiente[]>(KEY_COLA)) ?? [];
+    if (cola.length === 0) break;
+    const accion = cola[0];
+    try {
+      let idAdoptado: string | null = null;
+      let idOriginalAdoptado: string | null = null;
+      if (accion.tipo === "abrir_comanda") {
+        const r = await api<{ id: string }>("/comandas", { method: "POST", body: accion.payload });
+        // Si otro dispositivo ya abrió esa mesa, las acciones posteriores
+        // adoptan la comanda existente en vez de quedar apuntando a un UUID viejo.
+        if (r?.id && r.id !== accion.payload.id) {
+          idAdoptado = r.id;
+          idOriginalAdoptado = accion.payload.id;
         }
-        cola.shift();
-        await set(KEY_COLA, cola);
-        notificar(cola.length);
-      } catch (err) {
-        // Error de negocio (400/404/409): la acción nunca va a poder aplicarse.
-        // La descartamos y avisamos, para no bloquear el resto de la cola.
-        if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
-          console.error("Acción descartada:", accion, err.message);
-          cola.shift();
-          await set(KEY_COLA, cola);
-          notificar(cola.length, `Acción rechazada: ${err.message}`);
-          continue;
-        }
-        // Error de red / 5xx: paramos y reintentamos en el próximo ciclo.
-        break;
+      } else if (accion.tipo === "enviar_ronda") {
+        await api(`/comandas/${accion.payload.comandaId}/rondas`, {
+          method: "POST",
+          body: {
+            lineas: accion.payload.lineas,
+            imprimir: accion.payload.imprimir ?? true,
+            rondaId: accion.payload.rondaId,
+          },
+        });
+      } else {
+        await api(`/comandas/${accion.payload.comandaId}/cerrar`, { method: "POST" });
       }
+
+      // Volvemos a leer la cola antes de guardar: una acción puede haberse
+      // añadido mientras el fetch anterior seguía en curso.
+      const actual = (await get<AccionPendiente[]>(KEY_COLA)) ?? [];
+      if (idAdoptado) {
+        for (const pendiente of actual) {
+          if (pendiente.tipo === "enviar_ronda" && pendiente.payload.comandaId === idOriginalAdoptado) {
+            pendiente.payload.comandaId = idAdoptado;
+          }
+          if (pendiente.tipo === "cerrar_comanda_vacia" && pendiente.payload.comandaId === idOriginalAdoptado) {
+            pendiente.payload.comandaId = idAdoptado;
+          }
+        }
+      }
+      const indice = actual.findIndex((pendiente) => pendiente.uuid === accion.uuid);
+      if (indice >= 0) actual.splice(indice, 1);
+      await set(KEY_COLA, actual);
+      notificar(actual.length);
+    } catch (err) {
+      // Error de negocio (400/404/409): descarta esta acción y sigue con la cola.
+      if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
+        const actual = (await get<AccionPendiente[]>(KEY_COLA)) ?? [];
+        const indice = actual.findIndex((pendiente) => pendiente.uuid === accion.uuid);
+        if (indice >= 0) actual.splice(indice, 1);
+        await set(KEY_COLA, actual);
+        if (accion.tipo !== "cerrar_comanda_vacia") {
+          console.error("Acción descartada:", accion, err.message);
+          notificar(actual.length, `Acción rechazada: ${err.message}`);
+        } else {
+          notificar(actual.length);
+        }
+        continue;
+      }
+      // Error de red / 5xx: paramos y reintentamos en el próximo ciclo.
+      break;
     }
   }
 }

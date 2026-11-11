@@ -1,6 +1,7 @@
 # API del raspberry-backend
 
-Todos los endpoints viven en `http://<ip-del-raspberry>:3000`. La API no usa
+En producción los endpoints viven en `https://<nombre-o-ip-del-raspberry>:3000`;
+en desarrollo se usa `http://localhost:3000`. La API no usa
 prefijo `/api`: el backend sirve además la PWA compilada, así que las rutas de
 datos y los archivos estáticos conviven en el mismo puerto (mismo origen, cero
 problemas de CORS en producción).
@@ -36,7 +37,9 @@ Hay **dos niveles de token**, ambos enviados como `Authorization: Bearer <token>
 El token de usuario lleva `usuarioId`, `restauranteId`, `rol` y `dispositivoId`,
 firmado con HMAC-SHA256. `requireAuth` **no se fía del rol escrito en el token**:
 comprueba la firma y lee de la base que el usuario siga activo y cuál es su rol
-ahora mismo. Si no, responde `401` y la PWA limpia la sesión y vuelve al login.
+ahora mismo. Los tokens caducan a las 12 horas; si no, responde `401` y la PWA
+limpia la sesión y vuelve al acceso. Los intentos fallidos de contraseña y PIN
+tienen límites temporales por credencial y dirección IP.
 
 Los PIN y la contraseña del restaurante se guardan con scrypt. Si una base
 antigua los tiene en claro, el primer login correcto los reescribe.
@@ -46,8 +49,9 @@ junto a la base de datos (no se sube a git). El worker de impresión presenta
 esa misma clave al conectar por WebSocket; sin ella el backend ignora los
 eventos de impresión.
 
-> Sigue siendo un servicio de la LAN del local. Firmar el token no lo hace
-> apto para publicarlo en internet.
+En producción el backend exige TLS. La conexión del worker también debe usar
+HTTPS y confiar en la CA del certificado. No publiques el puerto en internet
+sin una política de red y certificados adecuada.
 
 **Roles:** `admin` y `camarero`. Los endpoints marcados con 🔒 exigen `admin`.
 
@@ -564,14 +568,18 @@ backend está listo.
 
 ## Eventos WebSocket
 
-Socket.IO en el mismo puerto. Los clientes entran en la sala del restaurante y
-reciben:
+Socket.IO en el mismo puerto. Los clientes de usuario deben conectar con
+`auth: { token: <token de usuario> }`; el backend valida firma, caducidad,
+restaurante y estado activo antes de unirlos a la sala. El worker se autentica
+con el secreto compartido. No se aceptan conexiones anónimas. Al reconectar, la
+PWA vuelve a cargar el estado completo, así no pierde cambios ocurridos sin red.
 
 | Evento | Emisor | Contenido |
 |---|---|---|
 | `ronda:creada` | backend | Nueva ronda enviada a cocina |
 | `mesa:liberada` | backend | `{ mesaId }` — al cobrar o al mover |
 | `comanda:movida` | backend | `{ comandaId, mesaDestinoId, modo }` |
+| `sala:actualizada` | backend | Alta/cierre de comanda, ronda, pago, movimiento o cambio de sala; la PWA refresca el estado en cuanto llega |
 | `pago:registrado` | backend | `{ comandaId, pagoId, importe, comandaCerrada }` |
 | `producto:disponibilidad` | backend | Un producto se agotó o volvió |
 | `alerta:producto_sin_destino` | backend | Se pidió algo que no imprime en ninguna parte |
@@ -583,5 +591,8 @@ El printer-worker se conecta como cliente y emite `worker:impresion_ok`,
 `worker:impresion_fallida`, `worker:salud_destino` y `worker:kds_ticket`, que el
 backend traduce a los eventos de arriba para el resto de clientes.
 
-La PWA escucha `ronda:creada`, `mesa:liberada`, `producto:disponibilidad` e
-`impresion:fallida`.
+La PWA escucha `sala:actualizada` y `producto:disponibilidad`, agrupa eventos
+que llegan seguidos en una sola recarga breve y refresca al reconectar. También
+muestra `impresion:fallida` como alerta. Si una acción se hizo sin conexión,
+la outbox local la envía al recuperar red y el backend publica el cambio al
+resto de los dispositivos.

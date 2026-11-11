@@ -3,7 +3,7 @@ import {
   CreditCard, FileText, Folder, Minus, Plus, Printer, Receipt, Save, Search, Send, ShoppingBag, Timer, X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api } from "./api";
+import { api, getUsuario } from "./api";
 import { Badge, Button, Dialog, Input } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import type { CartaCompleta, Mesa, Zona } from "./offline";
@@ -63,9 +63,10 @@ export function Sala({ zonas, mesas, abiertas, zonaId, onZonaId, onMesa, onLleva
     if (zonas.length === 1 && !zonaId) onZonaId(zonas[0].id);
   }, [zonas, zonaId, onZonaId]);
 
-  // Solo cuenta como ocupada si de verdad tiene algo pedido.
+  // Una comanda vacía también se muestra como abierta para sincronizar la
+  // selección de mesa entre móviles y el PC; ocupada implica que ya hay pedido.
   const porMesa = useMemo(
-    () => new Map(abiertas.filter((c) => c.mesa_id && c.unidades > 0).map((c) => [c.mesa_id!, c])),
+    () => new Map(abiertas.filter((c) => c.mesa_id).map((c) => [c.mesa_id!, c])),
     [abiertas]
   );
 
@@ -128,7 +129,8 @@ export function Sala({ zonas, mesas, abiertas, zonaId, onZonaId, onMesa, onLleva
         <div className="flex flex-col gap-2.5">
           {zonas.map((z) => {
             const deZona = mesas.filter((m) => m.zona_id === z.id);
-            const ocupadas = deZona.filter((m) => porMesa.has(m.id)).length;
+            const ocupadas = deZona.filter((m) => (porMesa.get(m.id)?.unidades ?? 0) > 0).length;
+            const abiertasVacias = deZona.filter((m) => porMesa.has(m.id) && !porMesa.get(m.id)?.unidades).length;
             return (
               <button key={z.id} onClick={() => onZonaId(z.id)}
                 className="flex items-center gap-3 rounded-xl border bg-card p-4 text-left transition-colors hover:bg-accent">
@@ -136,7 +138,7 @@ export function Sala({ zonas, mesas, abiertas, zonaId, onZonaId, onMesa, onLleva
                 <span className="flex-1">
                   <b className="font-display text-lg">{z.nombre}</b>
                   <span className="block text-xs text-muted-foreground">
-                    {deZona.length} mesas · {ocupadas} ocupadas
+                    {deZona.length} mesas · {ocupadas} ocupadas · {abiertasVacias} abiertas
                   </span>
                 </span>
                 <ChevronRight className="size-5 text-muted-foreground" />
@@ -155,7 +157,8 @@ export function Sala({ zonas, mesas, abiertas, zonaId, onZonaId, onMesa, onLleva
   /* ── Paso 2: mesas de la zona elegida ── */
   const zona = zonas.find((z) => z.id === zonaId);
   const deZona = mesas.filter((m) => m.zona_id === zonaId);
-  const ocupadas = deZona.filter((m) => porMesa.has(m.id)).length;
+  const ocupadas = deZona.filter((m) => (porMesa.get(m.id)?.unidades ?? 0) > 0).length;
+  const abiertasVacias = deZona.filter((m) => porMesa.has(m.id) && !porMesa.get(m.id)?.unidades).length;
 
   return (
     <div className="px-4 pb-6 pt-2">
@@ -166,8 +169,9 @@ export function Sala({ zonas, mesas, abiertas, zonaId, onZonaId, onMesa, onLleva
           </Button>
         )}
         <h2 className="flex-1 text-lg">{zona?.nombre}</h2>
-        <Badge variant="success">{deZona.length - ocupadas} libres</Badge>
+        <Badge variant="success">{deZona.length - ocupadas - abiertasVacias} libres</Badge>
         {ocupadas > 0 && <Badge variant="destructive">{ocupadas} ocupadas</Badge>}
+        {abiertasVacias > 0 && <Badge variant="warning">{abiertasVacias} abiertas</Badge>}
       </div>
 
       {deZona.length > 0 && (
@@ -190,15 +194,20 @@ export function Sala({ zonas, mesas, abiertas, zonaId, onZonaId, onMesa, onLleva
               <button key={m.id} onClick={() => onMesa(m)}
                 className={cn(
                   "flex flex-col items-center gap-0.5 rounded-xl border-[1.5px] bg-card py-3 transition-transform active:scale-95",
-                  c ? "border-destructive/60 bg-destructive/5" : "border-success/50"
+                  c?.unidades ? "border-destructive/60 bg-destructive/5" : c ? "border-warning/60 bg-warning/5" : "border-success/50"
                 )}>
                 <span className="font-display text-xl font-bold">{m.nombre}</span>
-                {c ? (
+                {c?.unidades ? (
                   <>
                     <span className="font-mono text-sm font-semibold">{eur(c.total)}</span>
                     <span className={cn("flex items-center gap-1 text-xs", colorTiempo(c.creado_en))}>
                       <Timer className="size-3" /> {transcurrido(c.creado_en, ahora)}
                     </span>
+                  </>
+                ) : c ? (
+                  <>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-warning">abierta</span>
+                    <span className="text-[0.68rem] text-muted-foreground">{c.camarero}</span>
                   </>
                 ) : (
                   <span className="text-xs font-semibold uppercase tracking-wider text-success">libre</span>
@@ -242,7 +251,7 @@ export function Comanda({
 }: {
   carta: CartaCompleta; titulo: string; comandaId: string; recargarClave: number;
   mesaActualId: string | null; mesas: Mesa[]; zonas: Zona[]; abiertas: ComandaAbierta[];
-  onEnviar: (l: Linea[], imprimir: boolean) => void; onCobrar: () => void; onVolver: () => void;
+  onEnviar: (l: Linea[], imprimir: boolean) => void; onCobrar: () => void; onVolver: (vacia: boolean) => void;
   onMovida: (mensaje: string) => void;
 }) {
   const [moviendo, setMoviendo] = useState(false);
@@ -365,7 +374,10 @@ export function Comanda({
   return (
     <div className="flex flex-1 flex-col">
       <header className="flex items-center gap-2 px-3 pb-1 pt-2.5">
-        <Button variant="ghost" size="icon" onClick={onVolver}><ArrowLeft className="!size-5" /></Button>
+        <Button variant="ghost" size="icon"
+          onClick={() => onVolver(!previas.some((l) => !l.anulada))} aria-label="Volver a las mesas">
+          <ArrowLeft className="!size-5" />
+        </Button>
         <h2 className="flex-1 text-lg">{titulo}</h2>
         {mesaActualId && (
           <Button variant="ghost" size="icon" title="Mover de mesa" onClick={() => setMoviendo(true)}>
@@ -773,6 +785,7 @@ function DialogoExtras({ producto, onOk, onCerrar }: {
 export function Cobro({ comandaId, titulo, onCerrado, onVolver }: {
   comandaId: string; titulo: string; onCerrado: () => void; onVolver: () => void;
 }) {
+  const puedeDescontar = getUsuario()?.rol === "admin";
   const [cuenta, setCuenta] = useState<{
     total: number; pagado: number; pendiente: number;
     bruto?: number; descuento?: number; descuentoMotivo?: string | null;
@@ -990,11 +1003,11 @@ export function Cobro({ comandaId, titulo, onCerrado, onVolver }: {
                   Descuento {cuenta.descuentoMotivo ? `· ${cuenta.descuentoMotivo}` : ""}
                   <b className="ml-2 font-mono">−{eur(cuenta.descuento ?? 0)}</b>
                 </span>
-                <Button variant="ghost" size="sm" onClick={() => void quitarDescuento()}>Quitar</Button>
+                {puedeDescontar && <Button variant="ghost" size="sm" onClick={() => void quitarDescuento()}>Quitar</Button>}
               </div>
-            ) : !dtoAbierto ? (
+            ) : puedeDescontar && !dtoAbierto ? (
               <Button variant="outline" onClick={() => setDtoAbierto(true)}>Aplicar descuento</Button>
-            ) : (
+            ) : puedeDescontar ? (
               <div className="flex flex-col gap-2 rounded-lg border bg-card p-3">
                 <div className="flex gap-2">
                   <Button className="flex-1" variant={dtoTipo === "porcentaje" ? "default" : "secondary"}
@@ -1019,7 +1032,7 @@ export function Cobro({ comandaId, titulo, onCerrado, onVolver }: {
                   <Button className="flex-1" onClick={() => void aplicarDescuento()}>Aplicar</Button>
                 </div>
               </div>
-            )}
+            ) : null}
             <div className="flex gap-2">
               <Button className="flex-1" variant={metodo === "efectivo" ? "default" : "secondary"} onClick={() => setMetodo("efectivo")}>
                 <Banknote /> Efectivo

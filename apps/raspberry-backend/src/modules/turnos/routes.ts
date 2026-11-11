@@ -55,6 +55,7 @@ turnosRouter.post("/", requireAuth, requireRole("admin"), (req, res) => {
      VALUES (?, ?, ?, ?, ?)`
   ).run(id, RESTAURANTE_ID, req.auth!.usuarioId, new Date().toISOString(), parsed.data.cajaInicial);
 
+  req.app.get("io")?.to(RESTAURANTE_ID).emit("sala:actualizada");
   res.status(201).json({ id, cajaInicial: parsed.data.cajaInicial });
 });
 
@@ -294,6 +295,7 @@ turnosRouter.patch("/:id/caja-inicial", requireAuth, requireRole("admin"), (req,
   // Se guarda como fondo de caja FIJO: los turnos siguientes nacerán con
   // este mismo valor hasta que se vuelva a cambiar aquí.
   setAjuste("caja_inicial_fija", String(parsed.data.cajaInicial));
+  req.app.get("io")?.to(RESTAURANTE_ID).emit("sala:actualizada");
   res.json({ id: req.params.id, cajaInicial: parsed.data.cajaInicial });
 });
 
@@ -339,6 +341,7 @@ turnosRouter.post("/:id/cerrar", requireAuth, requireRole("admin"), (req, res) =
   // que solo cambia el admin a mano).
   const nuevo = asegurarTurnoAbierto();
 
+  req.app.get("io")?.to(RESTAURANTE_ID).emit("sala:actualizada");
   res.json({
     id: req.params.id,
     cajaFinal: parsed.data.cajaFinal,
