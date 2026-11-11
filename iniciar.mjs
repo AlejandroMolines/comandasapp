@@ -48,16 +48,14 @@ function hay(cmd) {
   return r.status === 0;
 }
 
-function pnpmBin() {
-  if (hay("pnpm")) return "pnpm";
+function pnpmCommand() {
+  if (hay("pnpm")) return { cmd: "pnpm", prefix: [] };
   if (hay("corepack")) {
-    console.log("Activando pnpm con corepack (viene con Node)…");
-    ejecutar("corepack", ["enable"]);
-    ejecutar("corepack", ["prepare", "pnpm@10.33.4", "--activate"]);
-    if (hay("pnpm")) return "pnpm";
+    console.log("Usando pnpm mediante Corepack (sin instalar shims globales)…");
+    return { cmd: "corepack", prefix: ["pnpm"] };
   }
-  fail("No está pnpm. Instálalo con: corepack enable && corepack prepare pnpm@10.33.4 --activate");
-  return "pnpm";
+  fail("No está pnpm ni Corepack. Instala Node.js 20 o 22, que incluye Corepack.");
+  return { cmd: "pnpm", prefix: [] };
 }
 
 function lanzar(nombre, cmd, args, cwd) {
@@ -112,16 +110,16 @@ async function esperar(url) {
 
 async function main() {
   nodeOk();
-  const pnpm = pnpmBin();
+  const pnpm = pnpmCommand();
   process.chdir(raiz);
 
   if (!fs.existsSync(path.join(raiz, "node_modules"))) {
     console.log("Instalando dependencias (solo la primera vez)…");
-    ejecutar(pnpm, ["install"]);
+    ejecutar(pnpm.cmd, [...pnpm.prefix, "install"]);
   }
 
   console.log("Compilando…");
-  ejecutar(pnpm, ["-r", "build"]);
+  ejecutar(pnpm.cmd, [...pnpm.prefix, "-r", "build"]);
   const schemaDir = path.join(raiz, "apps/raspberry-backend/dist/db");
   fs.mkdirSync(schemaDir, { recursive: true });
   fs.copyFileSync(
