@@ -111,7 +111,7 @@ export function VistaResumen() {
       {toast}
       <div className="flex flex-wrap items-center gap-3">
         <h2 className="flex-1 text-xl">Resumen del servicio</h2>
-        <Select className="w-auto font-mono text-xs" value={turnoId ?? ""} onChange={(e) => { setTurnoId(e.target.value); setCierre(null); }}>
+        <Select aria-label="Turno del resumen" className="w-auto font-mono text-xs" value={turnoId ?? ""} onChange={(e) => { setTurnoId(e.target.value); setCierre(null); }}>
           {turnos.map((t) => (
             <option key={t.id} value={t.id}>
               {fecha(t.abierto_en)} {t.cerrado_en ? "" : "· EN CURSO"}
@@ -227,7 +227,7 @@ export function VistaResumen() {
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               <div className="flex flex-col gap-1.5">
-                <Label>Diario</Label>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Diario</p>
                 <div className="flex flex-wrap gap-2">
                   <Button variant="secondary" size="sm" disabled={descargando} onClick={() => void descargar("dia", "hoy")}>
                     <Download /> Hoy
@@ -238,14 +238,14 @@ export function VistaResumen() {
                 </div>
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label>Semanal</Label>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Semanal</p>
                 <Button variant="secondary" size="sm" className="self-start" disabled={descargando}
                   onClick={() => void descargar("dia", "semana")}>
                   <Download /> Esta semana (día a día)
                 </Button>
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label>Mensual</Label>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Mensual</p>
                 <div className="flex flex-wrap gap-2">
                   <Button variant="secondary" size="sm" disabled={descargando} onClick={() => void descargar("dia", "mes")}>
                     <Download /> Este mes (día a día)
@@ -307,8 +307,8 @@ export function VistaResumen() {
             </p>
           )}
           <div className="flex flex-col gap-1.5">
-            <Label>Efectivo contado (€)</Label>
-            <Input autoFocus inputMode="decimal" className="font-mono" placeholder="0,00"
+            <Label htmlFor="cierre-efectivo-contado">Efectivo contado (€)</Label>
+            <Input id="cierre-efectivo-contado" autoFocus inputMode="decimal" className="font-mono" placeholder="0,00"
               value={cajaContada} onChange={(e) => setCajaContada(e.target.value.replace(",", "."))}
               onKeyDown={(e) => e.key === "Enter" && cajaContada && void cerrarTurno()} />
           </div>

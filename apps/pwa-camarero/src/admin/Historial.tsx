@@ -98,16 +98,16 @@ export function VistaHistorial() {
         <CardContent className="flex flex-col gap-3 p-5">
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex flex-col gap-1.5">
-              <Label>Desde</Label>
-              <Input type="date" className="font-mono" value={desde} onChange={(e) => setDesde(e.target.value)} />
+              <Label htmlFor="historial-desde">Desde</Label>
+              <Input id="historial-desde" type="date" className="font-mono" value={desde} onChange={(e) => setDesde(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label>Hasta</Label>
-              <Input type="date" className="font-mono" value={hasta} onChange={(e) => setHasta(e.target.value)} />
+              <Label htmlFor="historial-hasta">Hasta</Label>
+              <Input id="historial-hasta" type="date" className="font-mono" value={hasta} onChange={(e) => setHasta(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label>Pago</Label>
-              <Select className="w-auto" value={metodo} onChange={(e) => setMetodo(e.target.value)}>
+              <Label htmlFor="historial-metodo">Pago</Label>
+              <Select id="historial-metodo" className="w-auto" value={metodo} onChange={(e) => setMetodo(e.target.value)}>
                 <option value="">Todos</option>
                 <option value="efectivo">Efectivo</option>
                 <option value="tarjeta">Tarjeta</option>
@@ -347,7 +347,7 @@ function DialogoDetalle({ detalle: d, onCerrar, onReimpreso }: {
         )}
 
         <div className="flex flex-col gap-2">
-          <Label>Reimprimir</Label>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Reimprimir</p>
           <p className="text-xs text-muted-foreground">
             El papel saldrá marcado como <b>COPIA</b>: por ley un mismo número no puede
             circular dos veces como original.

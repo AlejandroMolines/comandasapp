@@ -162,57 +162,57 @@ function FormEmpresa({ inicial, onOk, onCerrar }: {
         </p>
 
         <div className="flex flex-col gap-1.5">
-          <Label>Razón social *</Label>
-          <Input autoFocus placeholder="Construcciones Ejemplo S.L." value={d.razonSocial} onChange={set("razonSocial")} />
+          <Label htmlFor="empresa-razon-social">Razón social *</Label>
+          <Input id="empresa-razon-social" autoFocus placeholder="Construcciones Ejemplo S.L." value={d.razonSocial} onChange={set("razonSocial")} />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label>NIF / CIF *</Label>
-          <Input placeholder="B12345678" className="font-mono uppercase" value={d.nif} onChange={set("nif")} />
+          <Label htmlFor="empresa-nif">NIF / CIF *</Label>
+          <Input id="empresa-nif" placeholder="B12345678" className="font-mono uppercase" value={d.nif} onChange={set("nif")} />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label>Domicilio fiscal *</Label>
-          <Input placeholder="Calle Mayor 12, 3º B" value={d.direccion} onChange={set("direccion")} />
+          <Label htmlFor="empresa-direccion">Domicilio fiscal *</Label>
+          <Input id="empresa-direccion" placeholder="Calle Mayor 12, 3º B" value={d.direccion} onChange={set("direccion")} />
         </div>
         <div className="flex gap-3">
           <div className="flex w-28 flex-col gap-1.5">
-            <Label>C. Postal</Label>
-            <Input className="font-mono" placeholder="28001" value={d.codigoPostal} onChange={set("codigoPostal")} />
+            <Label htmlFor="empresa-codigo-postal">C. Postal</Label>
+            <Input id="empresa-codigo-postal" className="font-mono" placeholder="28001" value={d.codigoPostal} onChange={set("codigoPostal")} />
           </div>
           <div className="flex flex-1 flex-col gap-1.5">
-            <Label>Ciudad</Label>
-            <Input placeholder="Madrid" value={d.ciudad} onChange={set("ciudad")} />
+            <Label htmlFor="empresa-ciudad">Ciudad</Label>
+            <Input id="empresa-ciudad" placeholder="Madrid" value={d.ciudad} onChange={set("ciudad")} />
           </div>
         </div>
         <div className="flex gap-3">
           <div className="flex flex-1 flex-col gap-1.5">
-            <Label>Provincia</Label>
-            <Input placeholder="Madrid" value={d.provincia} onChange={set("provincia")} />
+            <Label htmlFor="empresa-provincia">Provincia</Label>
+            <Input id="empresa-provincia" placeholder="Madrid" value={d.provincia} onChange={set("provincia")} />
           </div>
           <div className="flex flex-1 flex-col gap-1.5">
-            <Label>País</Label>
-            <Input value={d.pais} onChange={set("pais")} />
+            <Label htmlFor="empresa-pais">País</Label>
+            <Input id="empresa-pais" value={d.pais} onChange={set("pais")} />
           </div>
         </div>
 
         <hr className="my-1 border-border" />
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Contacto (opcional)</p>
         <div className="flex flex-col gap-1.5">
-          <Label>Persona de contacto</Label>
-          <Input placeholder="Ana Pérez" value={d.personaContacto} onChange={set("personaContacto")} />
+          <Label htmlFor="empresa-contacto">Persona de contacto</Label>
+          <Input id="empresa-contacto" placeholder="Ana Pérez" value={d.personaContacto} onChange={set("personaContacto")} />
         </div>
         <div className="flex gap-3">
           <div className="flex flex-1 flex-col gap-1.5">
-            <Label>Email</Label>
-            <Input type="email" placeholder="facturas@empresa.com" value={d.email} onChange={set("email")} />
+            <Label htmlFor="empresa-email">Email</Label>
+            <Input id="empresa-email" type="email" placeholder="facturas@empresa.com" value={d.email} onChange={set("email")} />
           </div>
           <div className="flex w-36 flex-col gap-1.5">
-            <Label>Teléfono</Label>
-            <Input className="font-mono" placeholder="600123456" value={d.telefono} onChange={set("telefono")} />
+            <Label htmlFor="empresa-telefono">Teléfono</Label>
+            <Input id="empresa-telefono" className="font-mono" placeholder="600123456" value={d.telefono} onChange={set("telefono")} />
           </div>
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label>Notas internas</Label>
-          <Input placeholder="Cliente habitual, comen los jueves…" value={d.notas} onChange={set("notas")} />
+          <Label htmlFor="empresa-notas">Notas internas</Label>
+          <Input id="empresa-notas" placeholder="Cliente habitual, comen los jueves…" value={d.notas} onChange={set("notas")} />
         </div>
 
         <Button disabled={!valido} onClick={() => onOk(d)}>

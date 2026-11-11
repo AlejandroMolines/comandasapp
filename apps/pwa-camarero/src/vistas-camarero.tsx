@@ -99,7 +99,7 @@ export function Sala({ zonas, mesas, abiertas, zonaId, onZonaId, onMesa, onLleva
               </span>
               <span className="text-right">
                 <span className="block font-mono text-sm font-semibold">{eur(c.total)}</span>
-                <span className={cn("flex items-center justify-end gap-1 text-[0.62rem]", colorTiempo(c.creado_en))}>
+                <span className={cn("flex items-center justify-end gap-1 text-xs", colorTiempo(c.creado_en))}>
                   <Timer className="size-3" /> {transcurrido(c.creado_en, ahora)}
                 </span>
               </span>
@@ -196,12 +196,12 @@ export function Sala({ zonas, mesas, abiertas, zonaId, onZonaId, onMesa, onLleva
                 {c ? (
                   <>
                     <span className="font-mono text-sm font-semibold">{eur(c.total)}</span>
-                    <span className={cn("flex items-center gap-1 text-[0.62rem]", colorTiempo(c.creado_en))}>
+                    <span className={cn("flex items-center gap-1 text-xs", colorTiempo(c.creado_en))}>
                       <Timer className="size-3" /> {transcurrido(c.creado_en, ahora)}
                     </span>
                   </>
                 ) : (
-                  <span className="text-[0.65rem] font-semibold uppercase tracking-wider text-success">libre</span>
+                  <span className="text-xs font-semibold uppercase tracking-wider text-success">libre</span>
                 )}
               </button>
             );
@@ -1229,7 +1229,7 @@ function DialogoMoverMesa({ comandaId, mesaActualId, mesas, zonas, abiertas, onC
                         c ? "border-destructive/60 bg-destructive/5" : "border-success/50"
                       )}>
                       <b className="font-display">{m.nombre}</b>
-                      <span className="font-mono text-[0.62rem] text-muted-foreground">
+                      <span className="font-mono text-xs text-muted-foreground">
                         {c ? eur(c.total) : "libre"}
                       </span>
                     </button>

@@ -66,13 +66,13 @@ function LoginRestaurante({ onOk }: { onOk: () => void }) {
       </div>
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
-          <Label>Email</Label>
-          <Input type="email" autoComplete="email" placeholder="tu@restaurante.com"
+          <Label htmlFor="restaurante-email">Email</Label>
+          <Input id="restaurante-email" type="email" autoComplete="email" placeholder="tu@restaurante.com"
             value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label>Contraseña</Label>
-          <Input type="password" autoComplete="current-password" placeholder="••••••••"
+          <Label htmlFor="restaurante-contrasena">Contraseña</Label>
+          <Input id="restaurante-contrasena" type="password" autoComplete="current-password" placeholder="••••••••"
             value={password} onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && email && password && entrar()} />
         </div>
