@@ -110,6 +110,7 @@ export async function sesionSuperadmin(req, res) {
     configurada: config.configurada,
     autenticada,
     demoUrl: autenticada ? urlDemo() : null,
+    demoPuente: autenticada && Boolean(process.env.DEMO_BRIDGE_TOKEN),
   });
 }
 
@@ -153,7 +154,7 @@ export async function logoutSuperadmin(req, res) {
   return enviar(res, 200, { ok: true });
 }
 
-function urlDemo() {
+export function urlDemo() {
   const candidata = (process.env.DEMO_RESTAURANT_URL ?? "").trim();
   if (!candidata) return null;
   try {

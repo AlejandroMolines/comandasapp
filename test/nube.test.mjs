@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, test } from "node:test";
 import { clasificarPulso, tokenValido } from "../api/_lib/estado.mjs";
+import { separarLocales } from "../api/_lib/http.mjs";
 import { listarRestaurantes, recibirPulso } from "../api/_lib/http.mjs";
 import { vaciarMemoria } from "../api/_lib/store.mjs";
 
@@ -43,6 +44,15 @@ describe("central de locales", () => {
     assert.equal(tokenValido("abc", "abc"), true);
     assert.equal(tokenValido("abd", "abc"), false);
     assert.equal(tokenValido("", "abc"), false);
+  });
+
+  test("el demo no entra en la lista de restaurantes reales", () => {
+    const { restaurantes, demo } = separarLocales([
+      { restauranteId: "bar-real", esDemo: false },
+      { restauranteId: "restaurante-demo", esDemo: true },
+    ]);
+    assert.deepEqual(restaurantes.map((r) => r.restauranteId), ["bar-real"]);
+    assert.equal(demo.restauranteId, "restaurante-demo");
   });
 
   test("sin NUBE_TOKEN la central no acepta locales", async () => {

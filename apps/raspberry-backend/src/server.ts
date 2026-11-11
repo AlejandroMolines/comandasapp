@@ -9,6 +9,8 @@ import { Server as SocketServer, type DefaultEventsMap } from "socket.io";
 import { autenticarToken, type TokenPayload } from "./middleware/auth.js";
 import { secretosIguales, secretoFirma } from "./lib/secretos.js";
 import { iniciarPulso } from "./nube/pulso.js";
+import { cocinaHandler, demoRouter } from "./demo/routes.js";
+import { asegurarSemillaDemo, esModoDemo } from "./demo/semilla.js";
 import { ajustesRouter } from "./modules/ajustes/routes.js";
 import { authRouter } from "./modules/auth/routes.js";
 import { cartaRouter } from "./modules/carta/routes.js";
@@ -135,8 +137,10 @@ io.on("connection", (socket) => {
 });
 
 app.get("/salud", (_req, res) => {
-  res.json({ ok: true, restauranteId: RESTAURANTE_ID, hora: new Date().toISOString() });
+  res.json({ ok: true, restauranteId: RESTAURANTE_ID, demo: esModoDemo(), hora: new Date().toISOString() });
 });
+app.get("/cocina", cocinaHandler);
+app.use("/demo", demoRouter);
 
 app.use("/auth", authRouter);
 app.use("/ajustes", ajustesRouter);
@@ -177,5 +181,13 @@ if (process.env.NODE_ENV !== "test") {
   httpServer.listen(PORT, () => {
     console.log(`[raspberry-backend] escuchando en ${PROTOCOLO}://localhost:${PORT}`);
     iniciarPulso();
+    setTimeout(() => {
+      try {
+        const semilla = asegurarSemillaDemo();
+        if (semilla.modo === "creada") console.log("[demo] semilla del restaurante de pruebas lista");
+      } catch (err) {
+        console.error("[demo] no se pudo sembrar:", (err as Error).message);
+      }
+    }, 1500);
   });
 }

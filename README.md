@@ -81,6 +81,29 @@ simulada en `127.0.0.1:9100`. Con una térmica de verdad:
 
 Para desarrollar con recarga automática sigue existiendo `pnpm start:all`.
 
+### Restaurante demo
+
+Un servidor aparte, con el mismo código, para probar móvil, PC y cocina después
+de cada despliegue sin tocar un local real:
+
+```bash
+node iniciar.mjs --demo
+```
+
+Eso siembra carta, mesas, Ana y Luis, una comanda cerrada y varias abiertas.
+No imprime en papel y la serie fiscal es `DEMO` (sin validez). En la central,
+entra como superadmin y usa la tarjeta **Restaurante demo**:
+
+- **Móvil · camarero** abre la sala.
+- **PC · caja** abre el panel de admin.
+- **Cocina** muestra lo que habría salido por impresora.
+- **Reiniciar datos** vuelve a la semilla.
+
+En Vercel hacen falta `DEMO_RESTAURANT_URL` (la URL HTTPS de ese servidor) y
+`DEMO_BRIDGE_TOKEN` (la misma clave en la central y en el proceso `--demo`).
+El demo no sale en la lista de restaurantes reales. Un Raspberry de verdad no
+debe arrancar con `--demo`.
+
 ### Avisar a la central
 
 La central está publicada en <https://comandasapp-theta.vercel.app>.

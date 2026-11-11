@@ -25,6 +25,8 @@ import { pnpmInvocation } from "./scripts/package-manager.mjs";
 const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 const esWin = process.platform === "win32";
 const sinFalsa = process.argv.includes("--sin-impresora-falsa");
+const modoDemo = process.argv.includes("--demo");
+if (modoDemo) process.env.MODO_DEMO = "1";
 const hijos = [];
 
 function fail(msg) {
@@ -132,7 +134,10 @@ async function main() {
   PC (encargado)     http://localhost:3000
   Móviles (camareros) http://${ip}:3000
                      misma WiFi, nada que instalar
-
+  ${modoDemo ? `Cocina demo          http://localhost:3000/cocina
+  Este proceso es el restaurante de pruebas: no imprime de verdad
+  y no aparece en la lista de locales reales de la central.
+  ` : ""}
   Login  admin@demo.com / admin
          perfil Admin, PIN 1234
          camarero de prueba: Ana, PIN 1111

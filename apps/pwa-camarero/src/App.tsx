@@ -49,15 +49,33 @@ const NAV_ADMIN: { id: SeccionAdmin; nombre: string; Icono: typeof BarChart3 }[]
   { id: "ajustes", nombre: "Ajustes", Icono: Palette },
 ];
 
+function useDemo() {
+  const [demo, setDemo] = useState(false);
+  useEffect(() => {
+    fetch(`${API}/salud`).then((r) => r.json()).then((d: { demo?: boolean }) => setDemo(!!d.demo)).catch(() => setDemo(false));
+  }, []);
+  return demo;
+}
+
+function AvisoDemo() {
+  return (
+    <div className="bg-warning/20 px-3 py-1.5 text-center text-xs font-semibold text-warning">
+      Modo demostración · sin validez fiscal y sin impresora real
+    </div>
+  );
+}
+
 export default function App() {
   const [logueado, setLogueado] = useState(!!getToken());
   const usuario = getUsuario();
   const esAdmin = usuario?.rol === "admin";
+  const demo = useDemo();
+  const aviso = demo ? <AvisoDemo /> : null;
 
-  if (!logueado) return <Acceso onOk={() => setLogueado(true)} />;
+  if (!logueado) return <>{aviso}<Acceso onOk={() => setLogueado(true)} /></>;
   return esAdmin
-    ? <LayoutAdmin onSalir={() => { cerrarSesion(); setLogueado(false); }} />
-    : <FlujoSala onSalir={() => { cerrarSesion(); setLogueado(false); }} />;
+    ? <>{aviso}<LayoutAdmin onSalir={() => { cerrarSesion(); setLogueado(false); }} /></>
+    : <>{aviso}<FlujoSala onSalir={() => { cerrarSesion(); setLogueado(false); }} /></>;
 }
 
 /* ─────────────────── Layout ADMIN: sidebar + contenido ─────────────────── */

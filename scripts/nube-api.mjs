@@ -8,6 +8,7 @@ import superadminSesion from "../api/superadmin/sesion.js";
 import superadminLogin from "../api/superadmin/login.js";
 import superadminLogout from "../api/superadmin/logout.js";
 import superadminActualizacion from "../api/superadmin/actualizacion.js";
+import superadminDemo from "../api/superadmin/demo.js";
 
 const puerto = Number(process.env.NUBE_PORT ?? 8787);
 const server = http.createServer((req, res) => {
@@ -19,6 +20,7 @@ const server = http.createServer((req, res) => {
   if (url.startsWith("/api/superadmin/login")) return superadminLogin(req, res);
   if (url.startsWith("/api/superadmin/logout")) return superadminLogout(req, res);
   if (url.startsWith("/api/superadmin/actualizacion")) return superadminActualizacion(req, res);
+  if (url.startsWith("/api/superadmin/demo")) return superadminDemo(req, res);
   res.writeHead(404, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ error: "No existe" }));
 });

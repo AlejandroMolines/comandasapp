@@ -57,13 +57,15 @@ backend y de fallos de actualización, no una consola remota ni datos de ventas.
 
 ## Restaurante de pruebas
 
-La URL `https://comandasapp-theta.vercel.app` hospeda la central, no el backend
-de comandas. No puede servir directamente el restaurante: el backend utiliza
-SQLite persistente, Socket.IO y un worker de impresión, que no forman parte de
-las funciones de esta central. El panel muestra el botón **Abrir restaurante**
-cuando `DEMO_RESTAURANT_URL` apunta a una instancia HTTPS real y separada.
+La central no puede ejecutar el backend (SQLite, Socket.IO e impresión). El
+demo es otro proceso del mismo código, aislado de los locales reales:
 
-En el servidor del restaurante de pruebas configura:
+```bash
+node iniciar.mjs --demo
+```
+
+En el panel, la tarjeta **Restaurante demo** abre el móvil, el PC y la cocina,
+y puede reiniciar la semilla. Esas acciones llaman a ese servidor. Configura:
 
 | Variable | Uso |
 |---|---|
@@ -75,6 +77,8 @@ En el servidor del restaurante de pruebas configura:
 | `DEMO_ADMIN_EMAIL`, `DEMO_ADMIN_PASSWORD`, `DEMO_ADMIN_PIN` | Acceso privado al perfil administrador |
 | `DEMO_WAITER_NAME`, `DEMO_WAITER_PIN` | Acceso privado al perfil camarero |
 | `NUBE_URL`, `NUBE_TOKEN` | Envío de pulsos a la central |
+| `MODO_DEMO=1` | Lo pone `node iniciar.mjs --demo`. Impresión simulada y serie `DEMO` |
+| `DEMO_BRIDGE_TOKEN` | Misma clave que en la central, para abrir sesión y reiniciar |
 
 Inicializa una base vacía desde `apps/raspberry-backend` con `node
 scripts/bootstrap-admin.mjs` y `node scripts/seed-demo.mjs`. En producción el
@@ -83,11 +87,9 @@ menos 16 caracteres, el PIN entre 3 y 6 dígitos. Conserva el directorio de la
 base de datos en un volumen persistente. El script de semilla añade zonas,
 mesas, carta, extras y destinos de prueba.
 
-No hay una instancia remota de backend configurada en el repositorio ni
-credenciales de un proveedor de alojamiento disponibles para este proyecto.
-Por eso el panel y la integración quedan listos, pero el botón de prueba no se
-activa hasta desplegar ese servicio y definir `DEMO_RESTAURANT_URL`. No uses el
-backend de un restaurante real como demo.
+No apuntes `DEMO_RESTAURANT_URL` al Raspberry de un cliente. Solo al proceso
+arrancado con `--demo`. Ese proceso se anuncia a la central con `esDemo` y no
+entra en el listado ni en los conteos de los locales reales.
 
 ## Desarrollo local
 

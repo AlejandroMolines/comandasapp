@@ -50,6 +50,7 @@ export function normalizarPulso(body) {
           estado: texto(i?.estado, 20) || "desconocido",
         })),
       diagnosticos: normalizarDiagnosticos(body?.diagnosticos),
+      esDemo: body?.esDemo === true,
       recibidoEn: new Date().toISOString(),
     },
   };
@@ -119,18 +120,26 @@ export async function listarRestaurantes(_req, res) {
     aviso = "Sin base de datos el estado vive en memoria y se borra si Vercel apaga la función. Añade DATABASE_URL (Postgres) o KV_REST_API_URL y KV_REST_API_TOKEN.";
   }
   const ahora = Date.now();
-  const restaurantes = Object.values(mapa)
+  const locales = Object.values(mapa)
     .map((p) => ({
       ...p,
       estado: clasificarPulso(p.recibidoEn, ahora),
       segundos: Math.max(0, Math.round((ahora - Date.parse(p.recibidoEn)) / 1000)),
     }))
     .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+  const separados = separarLocales(locales);
   return enviar(res, 200, {
     ahora: new Date(ahora).toISOString(),
     persistencia: modo,
     configurada: Boolean(process.env.NUBE_TOKEN),
     aviso,
-    restaurantes,
+    restaurantes: separados.restaurantes,
+    demo: separados.demo,
   });
+}
+
+/** El restaurante demo no entra en el listado, la facturación ni las estadísticas de los locales reales. */
+export function separarLocales(locales) {
+  const demo = locales.find((local) => local.esDemo) ?? null;
+  return { restaurantes: locales.filter((local) => !local.esDemo), demo };
 }

@@ -19,8 +19,9 @@ type Respuesta = {
   configurada: boolean;
   aviso: string;
   restaurantes: Local[];
+  demo?: Local | null;
 };
-type Sesion = { configurada: boolean; autenticada: boolean; demoUrl: string | null };
+type Sesion = { configurada: boolean; autenticada: boolean; demoUrl: string | null; demoPuente?: boolean };
 type Commit = { sha: string; fecha: string; mensaje: string };
 type Publicacion = { sha: string | null; version: string | null; mensaje?: string; publicadaEn: string; pausada?: boolean } | null;
 type Versiones = { commits: Commit[]; centralSha: string; release: Publicacion; persistencia: string };
@@ -147,6 +148,41 @@ export function App() {
     }
   }
 
+  async function abrirDemo(destino: "camarero" | "admin" | "cocina") {
+    if (!sesion?.demoUrl) return;
+    if (!sesion.demoPuente) {
+      const ruta = destino === "cocina" ? "/cocina" : "/";
+      window.open(`${sesion.demoUrl}${ruta}`, "_blank", "noopener");
+      return;
+    }
+    setError("");
+    try {
+      const respuesta = await pedirJson<{ url: string }>("/api/superadmin/demo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ destino }),
+      });
+      window.open(respuesta.url, "_blank", "noopener");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo abrir el restaurante demo.");
+    }
+  }
+
+  async function reiniciarDemo() {
+    if (!window.confirm("Se borrarán las comandas de prueba y volverá la semilla. Los restaurantes reales no se tocan.")) return;
+    setError("");
+    try {
+      await pedirJson("/api/superadmin/demo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accion: "reiniciar" }),
+      });
+      await cargar();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo reiniciar el demo.");
+    }
+  }
+
   async function salir() {
     await pedirJson("/api/superadmin/logout", { method: "POST" }).catch(() => undefined);
     setSesion((actual) => actual ? { ...actual, autenticada: false } : actual);
@@ -216,24 +252,31 @@ export function App() {
       )}
 
       <section className="demo-panel">
-        <div className="demo-icono" aria-hidden="true">↗</div>
+        <div className="demo-icono" aria-hidden="true">D</div>
         <div className="demo-copy">
-          <p className="sobretitulo">ENTORNO PRIVADO</p>
-          <h2>Restaurante de pruebas</h2>
-          <p>Usa la misma cuenta en el móvil y en el PC para comprobar la sincronización de comandas y mesas.</p>
+          <p className="sobretitulo">RESTAURANTE DEMO</p>
+          <h2>Probar el producto</h2>
+          <p>
+            Mismo código que un local real, con datos de ejemplo y sin validez fiscal.
+            {datos?.demo ? ` Ahora: ${datos.demo.mesasOcupadas} mesas ocupadas · ${TEXTO[datos.demo.estado].toLowerCase()}.` : ""}
+          </p>
+          {sesion.demoUrl ? (
+            <div className="demo-acciones">
+              <button className="boton-principal" onClick={() => void abrirDemo("camarero")}>Móvil · camarero</button>
+              <button className="boton-principal" onClick={() => void abrirDemo("admin")}>PC · caja</button>
+              <button className="boton-secundario" onClick={() => void abrirDemo("cocina")}>Cocina</button>
+              <button className="boton-secundario" onClick={() => void reiniciarDemo()}>Reiniciar datos</button>
+            </div>
+          ) : (
+            <span className="demo-pendiente">Servidor demo sin conectar</span>
+          )}
         </div>
-        {sesion.demoUrl ? (
-          <a className="boton-principal boton-enlace" href={sesion.demoUrl} target="_blank" rel="noreferrer">
-            Abrir restaurante <span aria-hidden="true">↗</span>
-          </a>
-        ) : (
-          <span className="demo-pendiente">Backend aún sin conectar</span>
-        )}
       </section>
       {!sesion.demoUrl && (
         <div className="aviso">
-          El enlace se activa al configurar <code>DEMO_RESTAURANT_URL</code> en Vercel con la dirección HTTPS
-          del backend de pruebas. La central no hospeda ese backend.
+          Arranca un servidor con <code>node iniciar.mjs --demo</code> y pon su URL HTTPS en
+          <code> DEMO_RESTAURANT_URL</code>. La misma clave <code>DEMO_BRIDGE_TOKEN</code> va en la central y en ese servidor.
+          La central no guarda los pedidos: los abre en el servidor demo.
         </div>
       )}
 

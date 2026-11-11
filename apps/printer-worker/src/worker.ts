@@ -330,6 +330,17 @@ function construirTicket(log: LogRow, destinoId: string): TicketData | null {
 // ---------------------------------------------------------------------------
 const destinosEnProceso = new Set<string>();
 
+function simularTicketDemo(destino: string, ticket: TicketData): { ok: true } {
+  const ruta = path.join(path.dirname(DB_PATH), "demo-tickets.log");
+  const lineas = ticket.lineas.map((l) => `${l.cantidad}x ${l.nombre}`).join(", ");
+  fs.mkdirSync(path.dirname(ruta), { recursive: true });
+  fs.appendFileSync(
+    ruta,
+    `${new Date().toISOString()} DEMO sin impresora · ${destino} · ${ticket.mesa ?? "para llevar"} · ${lineas}\n`
+  );
+  return { ok: true };
+}
+
 function listo(log: LogRow): boolean {
   if (log.intentos === 0 || !log.ultimo_intento_en) return true;
   const espera = BACKOFF_MS[Math.min(log.intentos, BACKOFF_MS.length - 1)];
@@ -362,7 +373,9 @@ async function procesarDestino(destinoId: string, logs: LogRow[]) {
         continue;
       }
 
-      const resultado = await driver.enviar(destino, ticket);
+      const resultado = process.env.MODO_DEMO === "1" || process.env.MODO_DEMO === "true"
+        ? simularTicketDemo(destino.nombre, ticket)
+        : await driver.enviar(destino, ticket);
       const ahora = new Date().toISOString();
 
       if (resultado.ok) {

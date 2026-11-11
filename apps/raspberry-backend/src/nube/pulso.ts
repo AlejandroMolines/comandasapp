@@ -69,6 +69,7 @@ export function fotoLocal() {
     comandasAbiertas: comandas.n,
     impresoras,
     diagnosticos: [...leerLogsActualizacion(), ...diagnosticos].slice(-40),
+    esDemo: process.env.MODO_DEMO === "1" || process.env.MODO_DEMO === "true",
   };
 }
 

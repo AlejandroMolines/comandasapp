@@ -7,7 +7,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
-    "test": "node --import tsx --test test/secretos.test.ts test/flujo.test.ts"
+    "test": "node --import tsx --test test/secretos.test.ts test/flujo.test.ts test/demo.test.ts"
   },
   "dependencies": {
     "@comandas/shared-types": "workspace:*",

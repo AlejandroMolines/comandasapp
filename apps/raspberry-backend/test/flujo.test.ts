@@ -177,7 +177,7 @@ describe("flujo de servicio", { concurrency: 1 }, () => {
 
     const dto = await http("PUT", `/comandas/${comandaId}/descuento`, {
       tipo: "porcentaje", valor: 10, motivo: "Cortesía",
-    }, camareroToken);
+    }, adminToken);
     assert.equal(dto.status, 200, JSON.stringify(dto.json));
     assert.equal(dto.json?.total, 9);
     assert.equal(dto.json?.pendiente, 9);

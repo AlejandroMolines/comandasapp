@@ -6,6 +6,7 @@ import { requireAuth } from "../../middleware/auth.js";
 import { r2, resumenCuenta } from "../../lib/cuenta.js";
 import { emitirFactura, ErrorFactura, type LineaFactura } from "../facturas/service.js";
 import { getAjuste } from "../ajustes/routes.js";
+import { esModoDemo } from "../../demo/semilla.js";
 
 export const pagosRouter = Router();
 const RESTAURANTE_ID = process.env.RESTAURANTE_ID ?? "restaurante-demo";
@@ -108,7 +109,7 @@ pagosRouter.post("/comandas/:comandaId/pagos", requireAuth, (req, res) => {
     // saltos. Se numera aquí, dentro de la misma transacción que el pago,
     // usando una serie DISTINTA a la de las facturas completas para que las
     // dos numeraciones sean independientes y ninguna tenga huecos.
-    const serieSimpl = getAjuste("fiscal_serie_simplificada") || "SIM";
+    const serieSimpl = esModoDemo() ? "DEMO" : (getAjuste("fiscal_serie_simplificada") || "SIM");
     const ejercicioSimpl = new Date().getFullYear();
     const ultimoSimpl = db
       .prepare(

@@ -1,5 +1,6 @@
 import { db } from "../../db/connection.js";
 import { getAjuste } from "../ajustes/routes.js";
+import { esModoDemo } from "../../demo/semilla.js";
 import { v4 as uuid } from "uuid";
 
 const RESTAURANTE_ID = process.env.RESTAURANTE_ID ?? "restaurante-demo";
@@ -58,7 +59,7 @@ export function datosEmisor() {
     razonSocial: getAjuste("fiscal_razon_social"),
     nif: getAjuste("fiscal_nif"),
     direccion: getAjuste("fiscal_direccion"),
-    serie: getAjuste("fiscal_serie") || "FAC",
+    serie: esModoDemo() ? "DEMO" : (getAjuste("fiscal_serie") || "FAC"),
   };
 }
 
