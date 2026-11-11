@@ -21,6 +21,26 @@ export function hashSecreto(plano: string): string {
   return `scrypt$${SCRYPT_N}$${salt.toString("base64url")}$${hash.toString("base64url")}`;
 }
 
+function scryptAsync(
+  plano: string,
+  salt: Buffer,
+  keylen: number,
+  options: { N: number; r: number; p: number; maxmem?: number }
+): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(plano, salt, keylen, options, (error, derived) => {
+      if (error) reject(error);
+      else resolve(derived);
+    });
+  });
+}
+
+export async function hashSecretoAsync(plano: string): Promise<string> {
+  const salt = crypto.randomBytes(16);
+  const hash = await scryptAsync(plano, salt, KEYLEN, { N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P });
+  return `scrypt$${SCRYPT_N}$${salt.toString("base64url")}$${hash.toString("base64url")}`;
+}
+
 /** `legacy` = el valor guardado aún está en claro y hay que reescribirlo. */
 export function verificarSecreto(plano: string, almacenado: string): { ok: boolean; legacy: boolean } {
   if (!almacenado) return { ok: false, legacy: false };
@@ -33,6 +53,31 @@ export function verificarSecreto(plano: string, almacenado: string): { ok: boole
     if (!n || salt.length === 0 || esperado.length === 0) return { ok: false, legacy: false };
     const actual = crypto.scryptSync(plano, salt, esperado.length, { N: n, r: SCRYPT_R, p: SCRYPT_P });
     if (actual.length !== esperado.length) return { ok: false, legacy: false };
+    return { ok: crypto.timingSafeEqual(actual, esperado), legacy: false };
+  }
+  const a = Buffer.from(plano);
+  const b = Buffer.from(almacenado);
+  if (a.length !== b.length) return { ok: false, legacy: true };
+  return { ok: crypto.timingSafeEqual(a, b), legacy: true };
+}
+
+export async function verificarSecretoAsync(
+  plano: string,
+  almacenado: string
+): Promise<{ ok: boolean; legacy: boolean }> {
+  if (!almacenado) return { ok: false, legacy: false };
+  if (almacenado.startsWith("scrypt$")) {
+    const partes = almacenado.split("$");
+    if (partes.length !== 4) return { ok: false, legacy: false };
+    const n = Number(partes[1]);
+    const salt = Buffer.from(partes[2], "base64url");
+    const esperado = Buffer.from(partes[3], "base64url");
+    if (!Number.isSafeInteger(n) || n < 2 || n > SCRYPT_N * 2 || (n & (n - 1)) !== 0 || salt.length === 0 || esperado.length !== KEYLEN) {
+      return { ok: false, legacy: false };
+    }
+    const actual = await scryptAsync(plano, salt, esperado.length, {
+      N: n, r: SCRYPT_R, p: SCRYPT_P, maxmem: 64 * 1024 * 1024,
+    });
     return { ok: crypto.timingSafeEqual(actual, esperado), legacy: false };
   }
   const a = Buffer.from(plano);
@@ -70,6 +115,19 @@ export function firmarPayload(payload: object): string {
   const cuerpo = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const firma = crypto.createHmac("sha256", secretoFirma()).update(cuerpo).digest("base64url");
   return `${cuerpo}.${firma}`;
+}
+
+export const DURACION_SESION_SEGUNDOS = 12 * 60 * 60;
+
+export function firmarSesion(payload: object, duracionSegundos = DURACION_SESION_SEGUNDOS): string {
+  const exp = Math.floor(Date.now() / 1000) + duracionSegundos;
+  return firmarPayload({ ...payload, exp });
+}
+
+export function sesionVigente(payload: unknown): boolean {
+  if (!payload || typeof payload !== "object" || !("exp" in payload)) return false;
+  const exp = (payload as { exp?: unknown }).exp;
+  return typeof exp === "number" && Number.isSafeInteger(exp) && exp > Math.floor(Date.now() / 1000);
 }
 
 export function leerToken<T>(token: string): T | null {

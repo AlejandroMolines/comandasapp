@@ -161,8 +161,8 @@ empresasRouter.get("/:id/facturas", requireAuth, requireRole("admin"), (req, res
     .prepare(
       `SELECT id, serie, numero, ejercicio, fecha_expedicion, base_imponible,
               cuota_iva, total, metodo_pago, anulada
-         FROM facturas WHERE empresa_id = ? ORDER BY ejercicio DESC, numero DESC`
+         FROM facturas WHERE empresa_id = ? AND restaurante_id = ? ORDER BY ejercicio DESC, numero DESC`
     )
-    .all(req.params.id);
+    .all(req.params.id, RESTAURANTE_ID);
   res.json(facturas);
 });

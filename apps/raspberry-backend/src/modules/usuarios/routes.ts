@@ -60,5 +60,11 @@ usuariosRouter.patch("/:id/activo", requireAuth, requireRole("admin"), (req, res
     parsed.data.activo ? 1 : 0,
     req.params.id
   );
+  if (!parsed.data.activo) {
+    const io = req.app.get("io");
+    for (const socket of io?.sockets.sockets.values() ?? []) {
+      if (socket.data.auth?.usuarioId === req.params.id) socket.disconnect(true);
+    }
+  }
   res.json({ id: req.params.id, activo: parsed.data.activo });
 });

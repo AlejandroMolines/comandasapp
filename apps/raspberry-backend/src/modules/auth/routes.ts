@@ -1,16 +1,23 @@
-import { Router } from "express";
+import { Router, type RequestHandler } from "express";
 import { z } from "zod";
 import { db } from "../../db/connection.js";
 import { firmarToken } from "../../middleware/auth.js";
-import { firmarPayload, hashSecreto, leerToken, verificarSecreto } from "../../lib/secretos.js";
+import { firmarSesion, hashSecreto, hashSecretoAsync, leerToken, sesionVigente, verificarSecretoAsync } from "../../lib/secretos.js";
+import { loginCorrecto, loginFallido, segundosBloqueo } from "../../middleware/login-limit.js";
 import type { Request, Response, NextFunction } from "express";
 
-function aceptarSecreto(plano: string, almacenado: string, alCambiar: (nuevo: string) => void): boolean {
-  const resultado = verificarSecreto(plano, almacenado);
+async function aceptarSecreto(plano: string, almacenado: string, alCambiar: (nuevo: string) => void): Promise<boolean> {
+  const resultado = await verificarSecretoAsync(plano, almacenado);
   if (!resultado.ok) return false;
-  if (resultado.legacy) alCambiar(hashSecreto(plano));
+  if (resultado.legacy) alCambiar(await hashSecretoAsync(plano));
   return true;
 }
+
+function rutaAsync(handler: (req: Request, res: Response) => Promise<unknown>): RequestHandler {
+  return (req, res, next) => { void handler(req, res).catch(next); };
+}
+
+const HASH_FICTICIO = hashSecreto("credencial-ficticia-no-valida");
 
 export const authRouter = Router();
 const RESTAURANTE_ID = process.env.RESTAURANTE_ID ?? "restaurante-demo";
@@ -27,7 +34,11 @@ function requireRestaurante(req: Request, res: Response, next: NextFunction) {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) return res.status(401).json({ error: "Falta token" });
   const raw = leerToken<TokenRestaurante>(header.slice(7));
-  if (!raw || raw.nivel !== "restaurante" || !raw.restauranteId) {
+  if (
+    !raw || raw.nivel !== "restaurante" || raw.restauranteId !== RESTAURANTE_ID ||
+    !raw.dispositivoId || !sesionVigente(raw) ||
+    !db.prepare(`SELECT 1 FROM restaurantes WHERE id = ?`).get(RESTAURANTE_ID)
+  ) {
     return res.status(401).json({ error: "Token inválido" });
   }
   (req as Request & { restaurante?: TokenRestaurante }).restaurante = raw;
@@ -36,32 +47,48 @@ function requireRestaurante(req: Request, res: Response, next: NextFunction) {
 
 // PASO 1: login del restaurante con email + contraseña.
 const loginRestSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(1),
-  dispositivoId: z.string(),
+  email: z.string().email().max(320),
+  password: z.string().min(1).max(1024),
+  dispositivoId: z.string().min(1).max(128),
 });
 
-authRouter.post("/restaurante", (req, res) => {
+authRouter.post("/restaurante", rutaAsync(async (req, res) => {
   const parsed = loginRestSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json(parsed.error.flatten());
   const { email, password, dispositivoId } = parsed.data;
+  const ip = req.ip || "desconocida";
+  const credencial = `restaurante:${email.toLowerCase().trim()}`;
+  const espera = segundosBloqueo(ip, credencial);
+  if (espera) {
+    res.setHeader("Retry-After", String(espera));
+    return res.status(429).json({ error: "Demasiados intentos. Espera antes de volver a intentarlo." });
+  }
 
   const rest = db
-    .prepare(`SELECT id, nombre, password_hash FROM restaurantes WHERE email = ?`)
-    .get(email.toLowerCase().trim()) as { id: string; nombre: string; password_hash: string } | undefined;
-  const ok = !!rest && aceptarSecreto(password, rest.password_hash, (nuevo) => {
-    db.prepare(`UPDATE restaurantes SET password_hash = ? WHERE id = ?`).run(nuevo, rest!.id);
-  });
-  if (!rest || !ok) return res.status(401).json({ error: "Email o contraseña incorrectos" });
+    .prepare(`SELECT id, nombre, password_hash FROM restaurantes WHERE email = ? AND id = ?`)
+    .get(email.toLowerCase().trim(), RESTAURANTE_ID) as { id: string; nombre: string; password_hash: string } | undefined;
+  let ok = false;
+  if (rest) {
+    ok = await aceptarSecreto(password, rest.password_hash, (nuevo) => {
+      db.prepare(`UPDATE restaurantes SET password_hash = ? WHERE id = ?`).run(nuevo, rest.id);
+    });
+  } else {
+    await verificarSecretoAsync(password, HASH_FICTICIO);
+  }
+  if (!rest || !ok) {
+    loginFallido(ip, credencial);
+    return res.status(401).json({ error: "Email o contraseña incorrectos" });
+  }
+  loginCorrecto(ip, credencial);
 
-  const token = firmarPayload({
+  const token = firmarSesion({
     nivel: "restaurante",
     restauranteId: rest.id,
     dispositivoId,
   } satisfies TokenRestaurante);
 
   res.json({ tokenRestaurante: token, restaurante: { id: rest.id, nombre: rest.nombre } });
-});
+}));
 
 // PASO 2: perfiles del restaurante (nombre, rol y si piden PIN — nunca el PIN en sí).
 authRouter.get("/usuarios", requireRestaurante, (req, res) => {
@@ -77,14 +104,21 @@ authRouter.get("/usuarios", requireRestaurante, (req, res) => {
 
 // PASO 3: entrar en un perfil. PIN obligatorio solo si el perfil lo tiene.
 const entrarSchema = z.object({
-  usuarioId: z.string(),
-  pin: z.string().optional(),
+  usuarioId: z.string().min(1).max(128),
+  pin: z.string().max(6).optional(),
 });
 
-authRouter.post("/entrar", requireRestaurante, (req, res) => {
+authRouter.post("/entrar", requireRestaurante, rutaAsync(async (req, res) => {
   const parsed = entrarSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json(parsed.error.flatten());
   const { restauranteId, dispositivoId } = (req as Request & { restaurante: TokenRestaurante }).restaurante;
+  const ip = req.ip || "desconocida";
+  const credencial = `usuario:${restauranteId}:${parsed.data.usuarioId}`;
+  const espera = segundosBloqueo(ip, credencial);
+  if (espera) {
+    res.setHeader("Retry-After", String(espera));
+    return res.status(429).json({ error: "Demasiados intentos. Espera antes de volver a intentarlo." });
+  }
 
   const usuario = db
     .prepare(
@@ -94,14 +128,22 @@ authRouter.post("/entrar", requireRestaurante, (req, res) => {
     .get(parsed.data.usuarioId, restauranteId) as
     | { id: string; nombre: string; rol: "admin" | "camarero"; pin_hash: string }
     | undefined;
-  if (!usuario) return res.status(404).json({ error: "Perfil no encontrado" });
+  if (!usuario) {
+    await verificarSecretoAsync(parsed.data.pin ?? "", HASH_FICTICIO);
+    loginFallido(ip, credencial);
+    return res.status(401).json({ error: "Perfil o PIN incorrecto" });
+  }
 
   if (usuario.pin_hash !== "") {
-    const pinOk = aceptarSecreto(parsed.data.pin ?? "", usuario.pin_hash, (nuevo) => {
+    const pinOk = await aceptarSecreto(parsed.data.pin ?? "", usuario.pin_hash, (nuevo) => {
       db.prepare(`UPDATE usuarios SET pin_hash = ? WHERE id = ?`).run(nuevo, usuario.id);
     });
-    if (!pinOk) return res.status(401).json({ error: "PIN incorrecto" });
+    if (!pinOk) {
+      loginFallido(ip, credencial);
+      return res.status(401).json({ error: "Perfil o PIN incorrecto" });
+    }
   }
+  loginCorrecto(ip, credencial);
 
   const token = firmarToken({
     usuarioId: usuario.id,
@@ -110,4 +152,4 @@ authRouter.post("/entrar", requireRestaurante, (req, res) => {
     dispositivoId,
   });
   res.json({ token, usuario: { id: usuario.id, nombre: usuario.nombre, rol: usuario.rol } });
-});
+}));

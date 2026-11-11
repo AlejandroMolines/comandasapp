@@ -134,7 +134,7 @@ directamente) y la URL del backend para el WebSocket.
 
 | Variable | Por defecto |
 |---|---|
-| `BACKEND_URL` | `http://127.0.0.1:3000` |
+| `BACKEND_URL` | `http://127.0.0.1:3000` en desarrollo; HTTPS en producción |
 | `DB_PATH` | la BD del backend |
 
 ## Probar sin impresora

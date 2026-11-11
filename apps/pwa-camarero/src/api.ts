@@ -61,8 +61,9 @@ export async function api<T = unknown>(
     // ATENCIÓN: no aplica al propio intento de login/PIN, que también da
     // 401 cuando el PIN es incorrecto — eso no debe forzar ningún reload.
     const esIntentoDeLogin = path === "/auth/entrar" || path === "/auth/restaurante";
-    if (res.status === 401 && !esIntentoDeLogin && !opts.nivelRestaurante) {
-      cerrarSesion();
+    if (res.status === 401 && !esIntentoDeLogin) {
+      if (opts.nivelRestaurante) cerrarSesionRestaurante();
+      else cerrarSesion();
       window.location.reload();
     }
     throw new ApiError(res.status, (cuerpo as { error?: string }).error ?? `HTTP ${res.status}`, cuerpo);

@@ -3,7 +3,7 @@ import { v4 as uuid } from "uuid";
 import { z } from "zod";
 import { db } from "../../db/connection.js";
 import { importeDescuento, r2, resumenCuenta } from "../../lib/cuenta.js";
-import { requireAuth } from "../../middleware/auth.js";
+import { requireAuth, requireRole } from "../../middleware/auth.js";
 import { anularLinea, aplicarDescuento, cerrarSiSaldada, crearRonda, ErrorComanda } from "./service.js";
 
 export const comandasRouter = Router();
@@ -25,14 +25,24 @@ comandasRouter.post("/", requireAuth, (req, res) => {
   const camareroId = req.auth!.usuarioId;
   const ahora = new Date().toISOString();
 
+  const existente = db
+    .prepare(`SELECT restaurante_id, tipo FROM comandas WHERE id = ?`)
+    .get(id) as { restaurante_id: string; tipo: string } | undefined;
+  if (existente) {
+    if (existente.restaurante_id !== RESTAURANTE_ID) {
+      return res.status(409).json({ error: "El identificador de comanda ya está en uso" });
+    }
+    return res.status(200).json({ id, tipo: existente.tipo, mesaId, estado: "abierta", duplicada: true });
+  }
+
   // Si el turno ya no existe (p.ej. la cola offline traía uno de una BD anterior)
   // rechazamos con 404 en vez de reventar con FOREIGN KEY constraint —
   // así el cliente lo descarta de su cola en lugar de reintentar para siempre.
-  const turnoExiste = db.prepare(`SELECT 1 FROM turnos WHERE id = ?`).get(turnoId);
+  const turnoExiste = db.prepare(`SELECT 1 FROM turnos WHERE id = ? AND restaurante_id = ?`).get(turnoId, RESTAURANTE_ID);
   if (!turnoExiste) return res.status(404).json({ error: "El turno indicado no existe" });
 
   if (mesaId) {
-    const mesaExiste = db.prepare(`SELECT 1 FROM mesas WHERE id = ?`).get(mesaId);
+    const mesaExiste = db.prepare(`SELECT 1 FROM mesas WHERE id = ? AND restaurante_id = ?`).get(mesaId, RESTAURANTE_ID);
     if (!mesaExiste) return res.status(404).json({ error: "La mesa indicada no existe" });
   }
 
@@ -41,9 +51,9 @@ comandasRouter.post("/", requireAuth, (req, res) => {
   if (tipo === "mesa" && mesaId) {
     const abierta = db
       .prepare(
-        `SELECT id, camarero_id FROM comandas WHERE mesa_id = ? AND estado NOT IN ('cerrada','cancelada')`
+        `SELECT id, camarero_id FROM comandas WHERE mesa_id = ? AND restaurante_id = ? AND estado NOT IN ('cerrada','cancelada')`
       )
-      .get(mesaId) as { id: string; camarero_id: string } | undefined;
+      .get(mesaId, RESTAURANTE_ID) as { id: string; camarero_id: string } | undefined;
     if (abierta) {
       return res.status(200).json({
         id: abierta.id,
@@ -60,6 +70,8 @@ comandasRouter.post("/", requireAuth, (req, res) => {
     `INSERT INTO comandas (id, restaurante_id, turno_id, mesa_id, tipo, camarero_id, estado, creado_en)
      VALUES (?, ?, ?, ?, ?, ?, 'abierta', ?)`
   ).run(id, RESTAURANTE_ID, turnoId, mesaId, tipo, camareroId, ahora);
+
+  req.app.get("io")?.to(RESTAURANTE_ID).emit("sala:actualizada");
 
   res.status(201).json({ id, tipo, mesaId, estado: "abierta" });
 });
@@ -178,6 +190,7 @@ comandasRouter.post("/:id/mover", requireAuth, (req, res) => {
     mesaDestinoId,
     modo: modo!,
   });
+  io?.to(RESTAURANTE_ID).emit("sala:actualizada");
 
   res.json({
     modo: modo!,
@@ -271,6 +284,7 @@ comandasRouter.post("/:id/rondas", requireAuth, (req, res) => {
           productos: resultado.avisosSinDestino,
         });
       }
+      io?.to(RESTAURANTE_ID).emit("sala:actualizada");
     }
 
     res.status(resultado.duplicada ? 200 : 201).json(resultado);
@@ -298,6 +312,7 @@ comandasRouter.post("/:id/lineas/:lineaId/anular", requireAuth, (req, res) => {
     });
     const io = req.app.get("io");
     io?.to(RESTAURANTE_ID).emit("comanda:actualizada", { comandaId: req.params.id });
+    io?.to(RESTAURANTE_ID).emit("sala:actualizada");
     res.json(resultado);
   } catch (err) {
     const status = err instanceof ErrorComanda ? err.status : 400;
@@ -305,7 +320,7 @@ comandasRouter.post("/:id/lineas/:lineaId/anular", requireAuth, (req, res) => {
   }
 });
 
-comandasRouter.put("/:id/descuento", requireAuth, (req, res) => {
+comandasRouter.put("/:id/descuento", requireAuth, requireRole("admin"), (req, res) => {
   const parsed = z
     .object({
       tipo: z.enum(["porcentaje", "importe", "ninguno"]),
@@ -322,6 +337,7 @@ comandasRouter.put("/:id/descuento", requireAuth, (req, res) => {
       parsed.data.motivo?.trim() || null
     );
     req.app.get("io")?.to(RESTAURANTE_ID).emit("comanda:actualizada", { comandaId: req.params.id });
+    req.app.get("io")?.to(RESTAURANTE_ID).emit("sala:actualizada");
     res.json(cuenta);
   } catch (err) {
     const status = err instanceof ErrorComanda ? err.status : 400;
@@ -334,6 +350,7 @@ comandasRouter.post("/:id/cerrar", requireAuth, (req, res) => {
     const resultado = cerrarSiSaldada(req.params.id);
     const io = req.app.get("io");
     io?.to(RESTAURANTE_ID).emit("comanda:actualizada", { comandaId: req.params.id });
+    io?.to(RESTAURANTE_ID).emit("sala:actualizada");
     if (resultado.mesaId) io?.to(RESTAURANTE_ID).emit("mesa:liberada", { mesaId: resultado.mesaId });
     res.json(resultado);
   } catch (err) {

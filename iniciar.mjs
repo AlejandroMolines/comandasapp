@@ -20,6 +20,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { pnpmInvocation } from "./scripts/package-manager.mjs";
 
 const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 const esWin = process.platform === "win32";
@@ -41,23 +42,6 @@ function nodeOk() {
 function ejecutar(cmd, args, opts = {}) {
   const r = spawnSync(cmd, args, { cwd: opts.cwd ?? raiz, stdio: "inherit", shell: esWin, env: process.env });
   if (r.status !== 0) fail(`Falló: ${cmd} ${args.join(" ")}`);
-}
-
-function hay(cmd) {
-  const r = spawnSync(cmd, ["-v"], { shell: esWin, stdio: "ignore" });
-  return r.status === 0;
-}
-
-function pnpmBin() {
-  if (hay("pnpm")) return "pnpm";
-  if (hay("corepack")) {
-    console.log("Activando pnpm con corepack (viene con Node)…");
-    ejecutar("corepack", ["enable"]);
-    ejecutar("corepack", ["prepare", "pnpm@10.33.4", "--activate"]);
-    if (hay("pnpm")) return "pnpm";
-  }
-  fail("No está pnpm. Instálalo con: corepack enable && corepack prepare pnpm@10.33.4 --activate");
-  return "pnpm";
 }
 
 function lanzar(nombre, cmd, args, cwd) {
@@ -112,16 +96,17 @@ async function esperar(url) {
 
 async function main() {
   nodeOk();
-  const pnpm = pnpmBin();
   process.chdir(raiz);
 
   if (!fs.existsSync(path.join(raiz, "node_modules"))) {
     console.log("Instalando dependencias (solo la primera vez)…");
-    ejecutar(pnpm, ["install"]);
+    const pnpm = pnpmInvocation(["install"]);
+    ejecutar(pnpm.cmd, pnpm.args);
   }
 
   console.log("Compilando…");
-  ejecutar(pnpm, ["-r", "build"]);
+  const pnpm = pnpmInvocation(["-r", "build"]);
+  ejecutar(pnpm.cmd, pnpm.args);
   const schemaDir = path.join(raiz, "apps/raspberry-backend/dist/db");
   fs.mkdirSync(schemaDir, { recursive: true });
   fs.copyFileSync(

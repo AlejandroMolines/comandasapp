@@ -100,15 +100,21 @@ pnpm --filter raspberry-backend dev
 # Producción
 pnpm --filter raspberry-backend build
 cp src/db/schema.sql dist/db/          # el schema no lo copia tsc
-cd apps/raspberry-backend && node dist/server.js
+cd apps/raspberry-backend
+NODE_ENV=production TLS_CERT_FILE=/etc/comandas/tls/fullchain.pem TLS_KEY_FILE=/etc/comandas/tls/private-key.pem CORS_ORIGINS=https://raspberry.local:3000 node dist/server.js
 ```
+
+Producción exige HTTPS. El certificado debe ser de confianza para los móviles
+y contener en sus SAN el nombre o IP que usan para abrir la app. Si el worker
+se conecta por HTTPS, configura `BACKEND_URL` con ese mismo nombre y añade la
+CA emisora a `NODE_EXTRA_CA_CERTS` en el servicio del worker.
 
 Al arrancar debe aparecer:
 
 ```
 [db] SQLite lista en .../data/local.sqlite
 [raspberry-backend] sirviendo PWA desde .../apps/pwa-camarero/dist
-[raspberry-backend] escuchando en http://localhost:3000
+[raspberry-backend] escuchando en https://localhost:3000
 ```
 
 Si falta la línea de «sirviendo PWA», el `:3000` responderá `Cannot GET /`: es
@@ -131,6 +137,9 @@ Es idempotente: si ya existen, no hace nada.
 | `PORT` | `3000` | Puerto |
 | `RESTAURANTE_ID` | `restaurante-demo` | Tenant que sirve esta instancia |
 | `DB_PATH` | `data/local.sqlite` | Ruta de la base de datos |
+| `TLS_CERT_FILE` | — | Certificado PEM; obligatorio en producción |
+| `TLS_KEY_FILE` | — | Clave privada PEM; obligatoria en producción |
+| `CORS_ORIGINS` | localhost:5173 y 127.0.0.1:5173 | Orígenes permitidos, separados por comas; en producción incluye el origen HTTPS de la app |
 
 ## Logs
 

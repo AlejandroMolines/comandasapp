@@ -26,6 +26,7 @@ espaciosRouter.post("/zonas", requireAuth, requireRole("admin"), (req, res) => {
     parsed.data.nombre,
     parsed.data.orden
   );
+  req.app.get("io")?.to(RESTAURANTE_ID).emit("sala:actualizada");
   res.status(201).json({ id, ...parsed.data });
 });
 
@@ -41,6 +42,7 @@ espaciosRouter.put("/zonas/:id", requireAuth, requireRole("admin"), (req, res) =
     parsed.data.orden ?? existente.orden,
     req.params.id
   );
+  req.app.get("io")?.to(RESTAURANTE_ID).emit("sala:actualizada");
   res.json({ id: req.params.id });
 });
 
@@ -53,6 +55,7 @@ espaciosRouter.delete("/zonas/:id", requireAuth, requireRole("admin"), (req, res
     .prepare(`DELETE FROM zonas WHERE id = ? AND restaurante_id = ?`)
     .run(req.params.id, RESTAURANTE_ID);
   if (info.changes === 0) return res.status(404).json({ error: "Zona no encontrada" });
+  req.app.get("io")?.to(RESTAURANTE_ID).emit("sala:actualizada");
   res.status(204).end();
 });
 
@@ -77,6 +80,7 @@ espaciosRouter.post("/mesas", requireAuth, requireRole("admin"), (req, res) => {
     `INSERT INTO mesas (id, restaurante_id, zona_id, nombre, capacidad, estado)
      VALUES (?, ?, ?, ?, ?, 'libre')`
   ).run(id, RESTAURANTE_ID, parsed.data.zonaId, parsed.data.nombre, parsed.data.capacidad);
+  req.app.get("io")?.to(RESTAURANTE_ID).emit("sala:actualizada");
   res.status(201).json({ id, ...parsed.data, estado: "libre" });
 });
 
@@ -127,6 +131,7 @@ espaciosRouter.post("/mesas/lote", requireAuth, requireRole("admin"), (req, res)
     }
   })();
 
+  req.app.get("io")?.to(RESTAURANTE_ID).emit("sala:actualizada");
   res.status(201).json({ creadas, omitidas });
 });
 
@@ -143,6 +148,7 @@ espaciosRouter.put("/mesas/:id", requireAuth, requireRole("admin"), (req, res) =
     parsed.data.capacidad ?? existente.capacidad,
     req.params.id
   );
+  req.app.get("io")?.to(RESTAURANTE_ID).emit("sala:actualizada");
   res.json({ id: req.params.id });
 });
 
@@ -163,5 +169,6 @@ espaciosRouter.delete("/mesas/:id", requireAuth, requireRole("admin"), (req, res
     .prepare(`DELETE FROM mesas WHERE id = ? AND restaurante_id = ?`)
     .run(req.params.id, RESTAURANTE_ID);
   if (info.changes === 0) return res.status(404).json({ error: "Mesa no encontrada" });
+  req.app.get("io")?.to(RESTAURANTE_ID).emit("sala:actualizada");
   res.status(204).end();
 });

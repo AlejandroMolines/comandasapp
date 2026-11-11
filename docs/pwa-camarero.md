@@ -88,10 +88,9 @@ vacían en orden (FIFO) cada 3 segundos. Consecuencias:
 **Los UUID los genera el cliente** para que las operaciones sean idempotentes: si
 una petición se envía dos veces por un reintento, no se duplica la comanda.
 
-`uuid.ts` existe porque `crypto.randomUUID()` solo está disponible en contextos
-seguros (HTTPS o localhost), y desde el móvil se entra por `http://192.168.x.x`.
-El helper usa el nativo si está y si no genera el v4 a mano con
-`crypto.getRandomValues`.
+`uuid.ts` mantiene un fallback para desarrollo en HTTP. En producción se sirve
+por HTTPS con un certificado de confianza para el nombre/IP del Raspberry, de
+modo que el navegador móvil puede usar el contexto seguro y la PWA.
 
 ## Service worker
 
