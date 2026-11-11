@@ -12,6 +12,7 @@ type Local = {
   mesasOcupadas: number;
   comandasAbiertas: number;
   impresoras: Impresora[];
+  diagnosticos: { id: string; nivel: "error" | "aviso"; mensaje: string; fecha: string }[];
 };
 type Respuesta = {
   persistencia: string;
@@ -20,6 +21,9 @@ type Respuesta = {
   restaurantes: Local[];
 };
 type Sesion = { configurada: boolean; autenticada: boolean; demoUrl: string | null };
+type Commit = { sha: string; fecha: string; mensaje: string };
+type Publicacion = { sha: string | null; version: string | null; mensaje?: string; publicadaEn: string; pausada?: boolean } | null;
+type Versiones = { commits: Commit[]; centralSha: string; release: Publicacion; persistencia: string };
 
 const TEXTO: Record<Estado, string> = {
   en_linea: "En línea",
@@ -49,6 +53,9 @@ export function App() {
   const [error, setError] = useState("");
   const [cargando, setCargando] = useState(true);
   const [entrando, setEntrando] = useState(false);
+  const [versiones, setVersiones] = useState<Versiones | null>(null);
+  const [versionElegida, setVersionElegida] = useState("");
+  const [publicando, setPublicando] = useState(false);
 
   const cargar = useCallback(async () => {
     try {
@@ -62,13 +69,28 @@ export function App() {
     }
   }, []);
 
+  const cargarVersiones = useCallback(async () => {
+    try {
+      const nuevas = await pedirJson<Versiones>("/api/superadmin/actualizacion");
+      setVersiones(nuevas);
+      const indicePublicada = nuevas.release?.sha ? nuevas.commits.findIndex((c) => c.sha === nuevas.release?.sha) : -1;
+      const candidatas = indicePublicada >= 0 ? nuevas.commits.slice(0, indicePublicada) : nuevas.commits;
+      setVersionElegida((actual) => candidatas.some((c) => c.sha === actual) ? actual : candidatas[0]?.sha ?? "");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudieron consultar las versiones.");
+    }
+  }, []);
+
   useEffect(() => {
     let vivo = true;
     void pedirJson<Sesion>("/api/superadmin/sesion")
       .then((actual) => {
         if (!vivo) return;
         setSesion(actual);
-        if (actual.autenticada) void cargar();
+        if (actual.autenticada) {
+          void cargar();
+          void cargarVersiones();
+        }
       })
       .catch(() => {
         if (!vivo) return;
@@ -77,13 +99,14 @@ export function App() {
       })
       .finally(() => { if (vivo) setCargando(false); });
     return () => { vivo = false; };
-  }, [cargar]);
+  }, [cargar, cargarVersiones]);
 
   useEffect(() => {
     if (!sesion?.autenticada) return;
     const intervalo = setInterval(() => void cargar(), 15_000);
-    return () => clearInterval(intervalo);
-  }, [sesion?.autenticada, cargar]);
+    const versionesIntervalo = setInterval(() => void cargarVersiones(), 5 * 60_000);
+    return () => { clearInterval(intervalo); clearInterval(versionesIntervalo); };
+  }, [sesion?.autenticada, cargar, cargarVersiones]);
 
   async function entrar(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -98,10 +121,29 @@ export function App() {
       setSesion((actual) => actual ? { ...actual, autenticada: true } : actual);
       setPassword("");
       await cargar();
+      await cargarVersiones();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo iniciar sesión.");
     } finally {
       setEntrando(false);
+    }
+  }
+
+  async function publicarVersion(accion: "publicar" | "pausar" | "reanudar") {
+    if (accion === "publicar" && !window.confirm("Se publicará esta versión a todos los Raspberry conectados. Actualizarán automáticamente y reiniciarán los servicios locales en unos minutos. ¿Continuar?")) return;
+    setPublicando(true);
+    setError("");
+    try {
+      await pedirJson("/api/superadmin/actualizacion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(accion === "publicar" ? { sha: versionElegida } : { accion }),
+      });
+      await Promise.all([cargarVersiones(), cargar()]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo cambiar la versión publicada.");
+    } finally {
+      setPublicando(false);
     }
   }
 
@@ -151,6 +193,8 @@ export function App() {
 
   const locales = datos?.restaurantes ?? [];
   const enLinea = locales.filter((l) => l.estado === "en_linea").length;
+  const indicePublicada = versiones?.release?.sha ? versiones.commits.findIndex((c) => c.sha === versiones.release?.sha) : -1;
+  const commitsPublicables = versiones ? (indicePublicada >= 0 ? versiones.commits.slice(0, indicePublicada) : versiones.commits) : [];
 
   return (
     <main className="panel-superadmin">
@@ -158,7 +202,7 @@ export function App() {
         <div>
           <p className="sobretitulo">PANEL PRIVADO · SUPERADMIN</p>
           <h1>Central de restaurantes</h1>
-          <p>Estado de conexión y acceso al entorno de pruebas desde ordenador o móvil.</p>
+          <p>Conexión, versiones y diagnóstico de cada restaurante; publica actualizaciones desde aquí.</p>
         </div>
         <button className="boton-secundario" onClick={() => void salir()}>Cerrar sesión</button>
       </header>
@@ -193,6 +237,58 @@ export function App() {
         </div>
       )}
 
+      <section className="versiones-panel" aria-labelledby="versiones-titulo">
+        <div className="versiones-cabecera">
+          <div>
+            <p className="sobretitulo">ACTUALIZACIONES</p>
+            <h2 id="versiones-titulo">Versiones de los restaurantes</h2>
+            <p>Publica una versión de <code>main</code>. Los Raspberry conectados la instalarán automáticamente en unos minutos y reiniciarán sus servicios locales. Los datos del restaurante permanecen en el Raspberry.</p>
+          </div>
+          <span className={`estado-publicacion ${versiones?.release?.sha && !versiones.release.pausada ? "publicado" : "pausado"}`}>
+            {versiones?.release?.sha && !versiones.release.pausada ? `Publicada ${versiones.release.version}` : "Actualizaciones pausadas"}
+          </span>
+        </div>
+        {versiones ? (
+          <>
+            <label className="etiqueta-version" htmlFor="version-elegida">Versión de <code>main</code> disponible para publicar</label>
+            <select id="version-elegida" value={versionElegida} onChange={(event) => setVersionElegida(event.target.value)}>
+              {commitsPublicables.map((commit) => (
+                <option key={commit.sha} value={commit.sha}>
+                  {commit.sha.slice(0, 12)} · {commit.mensaje || "Sin descripción"}
+                </option>
+              ))}
+            </select>
+            <div className="acciones-version">
+              <button className="boton-principal" onClick={() => void publicarVersion("publicar")}
+                disabled={publicando || !versionElegida || !datos?.configurada || versiones.persistencia === "memoria"}>
+                {publicando ? "Guardando…" : "Publicar a todos los restaurantes"}
+              </button>
+              {versiones.release?.sha && (
+                <button className="boton-secundario" onClick={() => void publicarVersion(versiones.release?.pausada ? "reanudar" : "pausar")}
+                  disabled={publicando || !datos?.configurada || versiones.persistencia === "memoria"}>
+                  {versiones.release.pausada ? "Reanudar actualizaciones" : "Pausar nuevas actualizaciones"}
+                </button>
+              )}
+            </div>
+            {versiones.release?.sha && (
+              <p className="version-publicada">
+                {versiones.release.pausada ? "Última versión: " : "Objetivo: "}<code>{versiones.release.version}</code>{versiones.release.mensaje ? ` · ${versiones.release.mensaje}` : ""}
+                {versiones.release.publicadaEn ? ` · publicada ${new Date(versiones.release.publicadaEn).toLocaleString("es-ES")}` : ""}
+              </p>
+            )}
+            {versiones.persistencia === "memoria" && (
+              <div className="aviso aviso-error">La central no tiene almacenamiento persistente: la publicación se perderá si Vercel reinicia. Configura Postgres, KV o Vercel Blob.</div>
+            )}
+            {!datos?.configurada && <div className="aviso aviso-error">Configura <code>NUBE_TOKEN</code> en la central y en cada Raspberry para conectar los restaurantes y habilitar sus actualizaciones automáticas.</div>}
+            {versiones.commits.length > 0 && commitsPublicables.length === 0 && (
+              <p className="version-publicada">Ya está publicada la versión más reciente que GitHub ofrece en este panel.</p>
+            )}
+          </>
+        ) : (
+          <p className="versiones-cargando">Cargando versiones de GitHub…</p>
+        )}
+      </section>
+
       {locales.length > 0 && (
         <div className="resumen-estados">
           <span><b>{enLinea}</b> en línea</span>
@@ -210,12 +306,21 @@ export function App() {
         <section className="rejilla" aria-label="Restaurantes conectados">
           {locales.map((local) => {
             const impresorasOk = local.impresoras.filter((impresora) => impresora.estado === "ok").length;
+            const indiceObjetivo = versiones?.release?.sha
+              ? versiones.commits.findIndex((commit) => commit.sha === versiones.release?.sha) : -1;
+            const indiceLocal = versiones?.commits.findIndex((commit) => commit.sha === local.version) ?? -1;
+            const posteriorAlObjetivo = indiceLocal >= 0 && indiceObjetivo >= 0 && indiceLocal < indiceObjetivo;
             return (
               <article key={local.restauranteId} className="tarjeta">
                 <div className="cabecera-tarjeta">
                   <div>
                     <div className="nombre">{local.nombre}</div>
                     <div className="id">{local.restauranteId} · visto {hace(local.segundos)} · {local.version}</div>
+                    {versiones?.release?.sha && !versiones.release.pausada && (
+                      <div className={`version-local ${local.version === versiones.release.sha || posteriorAlObjetivo ? "al-dia" : "pendiente"}`}>
+                        {local.version === versiones.release.sha ? "Versión publicada instalada" : posteriorAlObjetivo ? "Ya tiene una versión posterior" : `Pendiente · objetivo ${versiones.release.version}`}
+                      </div>
+                    )}
                   </div>
                   <span className={`pildora ${local.estado}`}>{TEXTO[local.estado]}</span>
                 </div>
@@ -233,6 +338,19 @@ export function App() {
                     ))}
                   </div>
                 )}
+                <details className="diagnosticos">
+                    <summary>Diagnóstico remoto · {local.diagnosticos?.length ?? 0}</summary>
+                    {!local.diagnosticos?.length ? <p className="sin-logs">No hay avisos ni errores recientes.</p> : (
+                    <ol>
+                      {local.diagnosticos.slice().reverse().slice(0, 30).map((log) => (
+                        <li key={log.id} className={log.nivel}>
+                          <time dateTime={log.fecha}>{new Date(log.fecha).toLocaleString("es-ES")}</time>
+                          <span>{log.mensaje}</span>
+                        </li>
+                      ))}
+                    </ol>
+                    )}
+                </details>
               </article>
             );
           })}
@@ -240,7 +358,7 @@ export function App() {
       )}
 
       <footer>
-        La central recibe estados de conexión. Los pedidos y los datos del restaurante siguen en su backend local.
+        La central recibe estados y diagnósticos limitados. Los pedidos y los datos del restaurante siguen en su backend local.
       </footer>
     </main>
   );

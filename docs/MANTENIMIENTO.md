@@ -29,7 +29,9 @@ El asistente instala Node 22 y pnpm, compila la aplicación, configura HTTPS,
 crea un usuario de sistema sin permisos de administrador, inicializa una base
 vacía y te pide el nombre, email, contraseña y PIN del administrador. La
 contraseña debe tener al menos 16 caracteres. No se cargan mesas, carta ni
-datos de demostración: se configuran desde la aplicación.
+datos de demostración: se configuran desde la aplicación. También puedes
+enlazar el restaurante con la supercentral para publicar versiones y consultar
+diagnósticos; necesitarás la URL de Vercel y el `NUBE_TOKEN` configurado allí.
 
 La aplicación queda en `/opt/comandas`; la base y el secreto de sesión viven en
 `/var/lib/comandas`; la configuración privada está en `/etc/comandas`. Las
@@ -64,9 +66,22 @@ de `main`, recompila y reinicia los servicios. Conserva la base de datos, la
 clave de sesión, el certificado y las credenciales. Si falla la compilación,
 vuelve a la versión de código anterior.
 
+Si el restaurante está enlazado a la supercentral, no hace falta ejecutar el
+comando por cada versión: el servicio consulta cada cinco minutos si hay un
+commit nuevo publicado. La actualización hace copia previa, instala ese commit
+exacto y reinicia backend y worker; el panel indica si cada local sigue
+pendiente. Si falla, se recupera el código anterior y el detalle aparece en
+**Diagnóstico remoto**. Los errores recientes del backend también se envían a la
+central. Esto requiere que el Raspberry tenga internet durante la actualización;
+la aplicación del restaurante continúa guardando los datos localmente.
+
+En instalaciones anteriores a la supercentral, vuelve a ejecutar el instalador
+actual desde una terminal interactiva para enlazar el local y configurar el
+comprobador automático.
+
 ### Servicios instalados
 
-El instalador configura cuatro unidades de systemd:
+El instalador configura cuatro unidades de systemd para operar el local:
 
 | Unidad | Qué hace |
 |---|---|
@@ -74,6 +89,9 @@ El instalador configura cuatro unidades de systemd:
 | `comandas-worker.service` | Impresión |
 | `comandas-backup.service` | Una pasada del script de copia |
 | `comandas-backup.timer` | Esa pasada cada noche a las 04:30, y al encender si el Pi estaba apagado |
+
+Cuando enlazas la supercentral, añade `comandas-update-check.service` y su
+`timer`, que consulta cada cinco minutos si hay una nueva versión publicada.
 
 Si prefieres guardar las copias en un USB montado, puedes especificarlo durante
 la primera instalación:

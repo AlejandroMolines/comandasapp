@@ -125,6 +125,34 @@ h1 { margin-bottom: 9px; font-size: clamp(1.7rem, 5vw, 2.2rem); letter-spacing: 
 .boton-enlace { flex: 0 0 auto; }
 .demo-pendiente { color: var(--ambar); font-size: .85rem; font-weight: 700; white-space: nowrap; }
 
+.versiones-panel {
+  margin-top: 20px;
+  padding: 22px;
+  border: 1px solid var(--linea);
+  border-radius: 18px;
+  background: linear-gradient(130deg, #17251e, #141c18 75%);
+}
+.versiones-cabecera { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.versiones-cabecera h2 { margin: 0 0 7px; font-size: 1.13rem; }
+.versiones-cabecera p:not(.sobretitulo) { max-width: 690px; margin: 0; color: var(--muted); font-size: .9rem; line-height: 1.5; }
+.estado-publicacion { flex: 0 0 auto; padding: 6px 10px; border-radius: 999px; font-size: .76rem; font-weight: 750; }
+.estado-publicacion.publicado { background: #143524; color: var(--verde); }
+.estado-publicacion.pausado { background: #3a2e14; color: var(--ambar); }
+.etiqueta-version { display: block; margin: 20px 0 7px; color: #dce4dd; font-size: .86rem; font-weight: 650; }
+.versiones-panel select { width: 100%; min-height: 44px; padding: 9px 12px; border: 1px solid #3a4a40; border-radius: 10px; background: #0c1411; color: var(--texto); }
+.versiones-panel select:focus { outline: 2px solid #e8ad4c80; outline-offset: 1px; }
+.acciones-version { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+.acciones-version .boton-principal, .acciones-version .boton-secundario { margin: 0; }
+.version-publicada, .versiones-cargando { margin: 14px 0 0; color: var(--muted); font-size: .84rem; line-height: 1.5; }
+.diagnosticos { margin-top: 15px; border-top: 1px solid var(--linea); padding-top: 11px; }
+.diagnosticos summary { color: #dce4dd; font-size: .84rem; font-weight: 700; cursor: pointer; }
+.sin-logs { margin: 9px 0 0; color: var(--muted); font-size: .8rem; }
+.diagnosticos ol { display: grid; gap: 7px; margin: 10px 0 0; padding: 0; list-style: none; }
+.diagnosticos li { display: grid; grid-template-columns: minmax(145px, auto) 1fr; gap: 10px; padding: 8px 10px; border-radius: 8px; background: #0c1411; font-size: .78rem; line-height: 1.4; overflow-wrap: anywhere; }
+.diagnosticos li.error { border-left: 2px solid var(--rojo); }
+.diagnosticos li.aviso { margin: 0; border: 0; border-left: 2px solid var(--ambar); padding: 8px 10px; }
+.diagnosticos time { color: var(--muted); font-family: ui-monospace, monospace; }
+
 .aviso {
   margin: 18px 0;
   padding: 13px 15px;
@@ -149,6 +177,9 @@ h1 { margin-bottom: 9px; font-size: clamp(1.7rem, 5vw, 2.2rem); letter-spacing: 
 .cabecera-tarjeta { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .nombre { margin-bottom: 4px; font-size: 1.1rem; font-weight: 700; }
 .id { color: var(--muted); font-family: ui-monospace, monospace; font-size: .78rem; overflow-wrap: anywhere; }
+.version-local { margin-top: 5px; font-size: .76rem; font-weight: 700; }
+.version-local.al-dia { color: var(--verde); }
+.version-local.pendiente { color: var(--ambar); }
 .pildora { padding: 5px 10px; border-radius: 999px; font-size: .76rem; font-weight: 750; white-space: nowrap; }
 .en_linea { background: #143524; color: var(--verde); }
 .atencion { background: #3a2e14; color: var(--ambar); }
@@ -175,6 +206,11 @@ footer { margin-top: 28px; color: var(--muted); font-size: .82rem; line-height: 
   .demo-copy { min-width: calc(100% - 60px); }
   .boton-enlace { width: 100%; }
   .demo-pendiente { width: 100%; white-space: normal; }
+  .versiones-panel { padding: 17px; }
+  .versiones-cabecera { flex-direction: column; }
+  .acciones-version { flex-direction: column; }
+  .acciones-version button { width: 100%; }
+  .diagnosticos li { grid-template-columns: 1fr; gap: 4px; }
   .resumen-estados { gap: 10px 18px; }
   .cabecera-tarjeta { flex-wrap: wrap; }
 }

@@ -1,0 +1,13 @@
+[Unit]
+Description=Comandas — consulta si hay una versión publicada
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=COMANDAS_DIR=/opt/comandas
+EnvironmentFile=/etc/comandas/comandas.env
+ExecStart=/usr/bin/bash /opt/comandas/deploy/comprobar-actualizacion.sh
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true

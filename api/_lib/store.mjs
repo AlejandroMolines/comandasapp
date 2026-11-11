@@ -6,6 +6,7 @@
 
 const memoria = new Map();
 let tablaLista = false;
+let controlEnMemoria = null;
 
 export function modoPersistencia() {
   if (process.env.DATABASE_URL || process.env.POSTGRES_URL) return "postgres";
@@ -17,11 +18,71 @@ export function modoPersistencia() {
 export function vaciarMemoria() {
   memoria.clear();
   tablaLista = false;
+  controlEnMemoria = null;
+}
+
+/** Estado central (versión publicada) independiente de los pulsos por local. */
+export async function leerControl() {
+  const modo = modoPersistencia();
+  if (modo === "postgres") {
+    await asegurarTabla();
+    const q = await sql();
+    await q`CREATE TABLE IF NOT EXISTS nube_control (clave TEXT PRIMARY KEY, payload TEXT NOT NULL)`;
+    const filas = await q`SELECT payload FROM nube_control WHERE clave = 'actualizacion'`;
+    return filas[0] ? JSON.parse(filas[0].payload) : null;
+  }
+  if (modo === "kv") {
+    const data = await kv(["GET", "comandas:actualizacion"]);
+    return parsear(data?.result);
+  }
+  if (modo === "blob") {
+    const { get, list } = await blob();
+    const { blobs } = await list({ prefix: "control/actualizacion.json", limit: 1 });
+    if (!blobs[0]) return null;
+    const got = await get(blobs[0].pathname, { access: "private", useCache: false });
+    if (!got || got.statusCode !== 200 || !got.stream) return null;
+    return parsear(await new Response(got.stream).text());
+  }
+  return controlEnMemoria;
+}
+
+export async function guardarControl(control) {
+  const modo = modoPersistencia();
+  const payload = JSON.stringify(control);
+  if (modo === "postgres") {
+    await asegurarTabla();
+    const q = await sql();
+    await q`CREATE TABLE IF NOT EXISTS nube_control (clave TEXT PRIMARY KEY, payload TEXT NOT NULL)`;
+    await q`INSERT INTO nube_control (clave, payload) VALUES ('actualizacion', ${payload})
+      ON CONFLICT (clave) DO UPDATE SET payload = EXCLUDED.payload`;
+    return;
+  }
+  if (modo === "kv") return kv(["SET", "comandas:actualizacion", payload]);
+  if (modo === "blob") {
+    const { put } = await blob();
+    return put("control/actualizacion.json", payload, {
+      access: "private", addRandomSuffix: false, allowOverwrite: true,
+      contentType: "application/json", cacheControlMaxAge: 0,
+    });
+  }
+  controlEnMemoria = control;
+}
+
+function parsear(valor) {
+  if (!valor) return null;
+  try { return JSON.parse(valor); } catch { return null; }
 }
 
 export async function guardarPulso(pulso) {
   const todos = await leerMapa();
-  todos[pulso.restauranteId] = pulso;
+  const anterior = todos[pulso.restauranteId];
+  const logs = Array.isArray(anterior?.diagnosticos) ? anterior.diagnosticos : [];
+  const ids = new Set(logs.map((log) => log.id));
+  const nuevos = (pulso.diagnosticos ?? []).filter((log) => !ids.has(log.id));
+  todos[pulso.restauranteId] = {
+    ...pulso,
+    diagnosticos: [...logs, ...nuevos].slice(-100),
+  };
   await escribirMapa(todos);
 }
 

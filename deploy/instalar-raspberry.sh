@@ -24,6 +24,9 @@ if [[ ! -f "$RAIZ/pnpm-lock.yaml" ]]; then
   if [[ ! -d "$APP_DIR/.git" ]]; then
     git clone --depth 1 "$REPO_URL" "$APP_DIR"
   elif [[ -e "$STATE_DIR/.setup-complete" ]]; then
+    git -C "$APP_DIR" fetch --depth 50 origin main
+    git -C "$APP_DIR" show origin/main:deploy/actualizar-raspberry.sh > "$APP_DIR/deploy/actualizar-raspberry.sh"
+    chmod 0755 "$APP_DIR/deploy/actualizar-raspberry.sh"
     exec bash "$APP_DIR/deploy/actualizar-raspberry.sh"
   else
     git -C "$APP_DIR" fetch --depth 1 origin main
@@ -63,6 +66,15 @@ while true; do
   [[ "$pin" =~ ^[0-9]{3,6}$ ]] && break
   echo "El PIN debe tener entre 3 y 6 dígitos."
 done
+echo
+preguntar central_url "URL de la supercentral para gestionar versiones y logs (Enter para omitir): "
+central_token=""
+if [[ -n "$central_url" ]]; then
+  [[ "$central_url" =~ ^https://[^[:space:]]+$ ]] || die "La URL de la supercentral debe empezar por https://."
+  central_url="${central_url%/}"
+  preguntar_secreto central_token "NUBE_TOKEN configurado en la supercentral: "
+  [[ "$central_token" =~ ^[A-Za-z0-9._~-]{20,256}$ ]] || die "El token debe contener entre 20 y 256 caracteres URL seguros."
+fi
 
 echo
 echo "Preparando dependencias y compilando (puede tardar varios minutos)…"
@@ -136,10 +148,14 @@ chmod -R a-w "$APP_DIR"
 chown root:comandas "$TLS_DIR" "$TLS_DIR/private-key.pem"
 
 local_id="$(cat /proc/sys/kernel/random/uuid | tr -d '-')"
+version_inicial="$(git -C "$APP_DIR" rev-parse HEAD)"
 cat > "$ENV_DIR/comandas.env" <<EOF
 NODE_ENV=production
 PORT=3000
 RESTAURANTE_ID=$local_id
+COMANDAS_VERSION=$version_inicial
+NUBE_URL=$central_url
+NUBE_TOKEN=$central_token
 DB_PATH=$STATE_DIR/local.sqlite
 TOKEN_SECRET_FILE=$STATE_DIR/token.secret
 TLS_CERT_FILE=$TLS_DIR/cert.pem
@@ -148,7 +164,7 @@ EOF
 chmod 0600 "$ENV_DIR/comandas.env"
 chown root:root "$ENV_DIR/comandas.env"
 
-for unidad in comandas-backend.service comandas-worker.service comandas-backup.service comandas-backup.timer; do
+for unidad in comandas-backend.service comandas-worker.service comandas-backup.service comandas-backup.timer comandas-update-check.service comandas-update-check.timer; do
   sed "s|/opt/comandas|$APP_DIR|g; s|/var/backups/comandas|$DESTINO_BACKUP|g" \
     "$RAIZ/deploy/$unidad" > "/etc/systemd/system/$unidad"
 done
@@ -171,6 +187,7 @@ unset clave clave2 pin
 touch "$STATE_DIR/.setup-complete"
 chown comandas:comandas "$STATE_DIR/.setup-complete"
 systemctl enable --now comandas-worker.service comandas-backup.timer
+if [[ -n "$central_url" ]]; then systemctl enable --now comandas-update-check.timer; fi
 
 echo
 echo "Instalación terminada. Desde la misma red WiFi: https://raspberry.local:3000"
@@ -180,3 +197,4 @@ echo "Certificado CA para confiar en cada dispositivo: $TLS_DIR/ca.pem"
 echo "Guía para confiar en él y añadir la app a inicio: https://github.com/AlejandroMolines/comandasapp/blob/main/docs/MANTENIMIENTO.md#primer-acceso"
 echo "Datos y clave de sesiones: $STATE_DIR · copias: $DESTINO_BACKUP"
 echo "Para actualizar en el futuro: sudo bash $APP_DIR/deploy/actualizar-raspberry.sh"
+if [[ -n "$central_url" ]]; then echo "La supercentral comprobará versiones y diagnósticos automáticamente."; fi

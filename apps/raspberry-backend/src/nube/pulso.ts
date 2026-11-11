@@ -1,6 +1,50 @@
 import { db } from "../db/connection.js";
+import fs from "node:fs";
 
 const CADA_MS = 30_000;
+const diagnosticos: { id: string; nivel: "error" | "aviso"; mensaje: string; fecha: string }[] = [];
+let logsCapturados = false;
+
+function capturarLogs() {
+  if (logsCapturados) return;
+  logsCapturados = true;
+  for (const nivel of ["error", "warn"] as const) {
+    const original = console[nivel].bind(console);
+    console[nivel] = (...valores: unknown[]) => {
+      const mensaje = valores.map((valor) => {
+        if (valor instanceof Error) return valor.message;
+        return typeof valor === "string" ? valor : "";
+      }).filter(Boolean).join(" ")
+        .replace(/((?:password|token|secret|authorization|pin)\s*[:=]\s*)[^\s,;]+/gi, "$1[oculto]")
+        .slice(0, 500);
+      if (mensaje) {
+        const fecha = new Date().toISOString();
+        diagnosticos.push({
+          id: `${Date.now()}-${diagnosticos.length}`,
+          nivel: nivel === "error" ? "error" : "aviso",
+          mensaje,
+          fecha,
+        });
+        if (diagnosticos.length > 40) diagnosticos.shift();
+      }
+      original(...valores);
+    };
+  }
+}
+
+function leerLogsActualizacion() {
+  try {
+    return fs.readFileSync("/var/lib/comandas/central-diagnosticos.log", "utf8")
+      .trim().split("\n").slice(-40).flatMap((linea) => {
+        const [fecha, nivel, ...partes] = linea.split("\t");
+        const mensaje = partes.join(" ").slice(0, 500);
+        if (!mensaje || (nivel !== "error" && nivel !== "aviso") || !Number.isFinite(Date.parse(fecha))) return [];
+        return [{ id: `update-${fecha}`, nivel, mensaje, fecha }];
+      });
+  } catch {
+    return [];
+  }
+}
 
 type Impresora = { nombre: string; estado: string };
 
@@ -20,10 +64,11 @@ export function fotoLocal() {
   return {
     restauranteId: process.env.RESTAURANTE_ID ?? rest?.id ?? "restaurante-demo",
     nombre: rest?.nombre ?? "Restaurante",
-    version: "local",
+    version: process.env.COMANDAS_VERSION ?? "local",
     mesasOcupadas: mesas.n,
     comandasAbiertas: comandas.n,
     impresoras,
+    diagnosticos: [...leerLogsActualizacion(), ...diagnosticos].slice(-40),
   };
 }
 
@@ -32,6 +77,7 @@ export function fotoLocal() {
  * Si NUBE_URL o NUBE_TOKEN no están, no hace nada: el bar no depende de internet.
  */
 export function iniciarPulso() {
+  capturarLogs();
   const base = (process.env.NUBE_URL ?? "").replace(/\/$/, "");
   const token = process.env.NUBE_TOKEN ?? "";
   if (!base || !token) return;

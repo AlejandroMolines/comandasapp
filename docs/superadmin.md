@@ -16,6 +16,7 @@ Production:
 | `SUPERADMIN_PASSWORD` | Una contraseña de al menos 8 caracteres |
 | `SUPERADMIN_SESSION_SECRET` | Secreto aleatorio de al menos 32 caracteres |
 | `DEMO_RESTAURANT_URL` | URL HTTPS del backend remoto de pruebas |
+| `NUBE_TOKEN` | Token privado compartido por la central y los Raspberry |
 
 Puedes generar el secreto de sesión en tu equipo con:
 
@@ -26,6 +27,33 @@ node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'
 No pongas estos valores en `VITE_*`, en el repositorio, en incidencias ni en
 capturas. Después de guardar las variables, vuelve a desplegar la central.
 El endpoint `/api/restaurantes` ya no devuelve información sin esa sesión.
+
+## Publicar versiones y revisar diagnósticos
+
+Configura `NUBE_TOKEN` como variable privada de Production en Vercel. Genera un
+valor aleatorio de al menos 32 caracteres URL seguros (por ejemplo,
+`openssl rand -hex 32`) y usa el mismo en cada Raspberry. La central necesita
+Postgres, Upstash KV o Vercel Blob para conservar la versión publicada; el modo
+`memoria` no sirve para distribuir actualizaciones.
+
+Después de enlazar una Raspberry con la URL de la central y ese token, aparecerá
+en **Central de restaurantes**. En **Versiones de los restaurantes** puedes
+escoger uno de los últimos commits de `main` y publicarlo a todos los locales.
+Cada Raspberry consulta la central cada cinco minutos, crea una copia local de
+SQLite y actualiza los servicios. Si la compilación o el chequeo de salud fallan,
+recupera el código anterior y envía un diagnóstico. También se muestran avisos y
+errores recientes del backend. La pausa detiene nuevas instalaciones; no
+interrumpe una actualización ya iniciada.
+
+Las publicaciones solo avanzan respecto a la versión publicada; el panel no
+permite seleccionar una versión anterior, porque los cambios de esquema de la
+base pueden no ser reversibles. Los commits seleccionables provienen de los
+últimos 30 commits de `main`.
+
+Los Raspberry instalados antes de esta función necesitan actualizarse una vez
+manualmente y enlazarse a la central. A partir de entonces queda instalado el
+comprobador periódico. El acceso remoto muestra diagnósticos acotados del
+backend y de fallos de actualización, no una consola remota ni datos de ventas.
 
 ## Restaurante de pruebas
 
