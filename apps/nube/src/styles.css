@@ -39,16 +39,11 @@ main { width: min(1020px, 100%); margin: 0 auto; padding: 36px 24px 56px; }
   background: linear-gradient(145deg, #1b2922, #121a16 72%);
   box-shadow: 0 26px 100px #0005;
 }
-.marca {
-  display: grid;
-  width: 42px;
-  height: 42px;
-  place-items: center;
-  border-radius: 13px;
-  background: var(--ambar);
-  color: #241a0c;
-  font-weight: 900;
-  font-size: 1.25rem;
+.marca-logo {
+  display: block;
+  width: 72px;
+  height: auto;
+  margin-bottom: 8px;
 }
 .sobretitulo {
   margin: 0 0 7px;

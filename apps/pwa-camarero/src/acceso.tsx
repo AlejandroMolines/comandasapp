@@ -60,7 +60,7 @@ function LoginRestaurante({ onOk }: { onOk: () => void }) {
     <div className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center px-6 py-10">
       <div className="absolute right-4 top-4"><BotonModo /></div>
       <div className="mb-8 text-center">
-        <span className="mb-3 inline-flex size-14 items-center justify-center rounded-2xl bg-primary font-display text-3xl font-bold text-primary-foreground">C</span>
+        <img src="/logo.png" alt="" className="mx-auto mb-3 h-16 w-auto" />
         <h1 className="text-2xl">Comandas</h1>
         <p className="mt-1 text-sm text-muted-foreground">Accede con la cuenta de tu restaurante</p>
       </div>

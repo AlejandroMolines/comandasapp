@@ -71,7 +71,7 @@ function LayoutAdmin({ onSalir }: { onSalir: () => void }) {
     <div className="flex min-h-dvh max-md:flex-col">
       <aside className="sticky top-0 flex h-dvh w-56 shrink-0 flex-col border-r bg-card p-3 max-md:static max-md:h-auto max-md:w-full max-md:flex-row max-md:items-center max-md:gap-2 max-md:py-2">
         <div className="flex items-center gap-2.5 px-2 pb-4 max-md:shrink-0 max-md:pb-0">
-          <span className="flex size-8 items-center justify-center rounded-lg bg-primary font-display text-lg font-bold text-primary-foreground">C</span>
+          <img src="/logo.png" alt="" className="size-8 object-contain" />
           <b className="font-display max-md:hidden">Comandas</b>
         </div>
         <nav className="flex flex-1 flex-col gap-0.5 max-md:hidden">
@@ -226,6 +226,7 @@ function FlujoSala({ onSalir, embebido = false }: { onSalir?: () => void; embebi
       {toast}
       {!embebido && (
         <div className="flex items-center gap-2 border-b bg-card px-4 py-2">
+          <img src="/logo.png" alt="" className="size-7 object-contain" />
           <span className="font-display font-semibold">{getUsuario()?.nombre}</span>
           {nPendientes > 0 && <Badge variant="warning">⏳ {nPendientes} sin enviar</Badge>}
           {!navigator.onLine && <Badge variant="destructive">Sin conexión</Badge>}
