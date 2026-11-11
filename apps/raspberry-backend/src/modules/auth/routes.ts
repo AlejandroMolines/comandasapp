@@ -47,8 +47,8 @@ function requireRestaurante(req: Request, res: Response, next: NextFunction) {
 
 // PASO 1: login del restaurante con email + contraseña.
 const loginRestSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(1),
+  email: z.string().email().max(320),
+  password: z.string().min(1).max(1024),
   dispositivoId: z.string().min(1).max(128),
 });
 
@@ -104,8 +104,8 @@ authRouter.get("/usuarios", requireRestaurante, (req, res) => {
 
 // PASO 3: entrar en un perfil. PIN obligatorio solo si el perfil lo tiene.
 const entrarSchema = z.object({
-  usuarioId: z.string(),
-  pin: z.string().optional(),
+  usuarioId: z.string().min(1).max(128),
+  pin: z.string().max(6).optional(),
 });
 
 authRouter.post("/entrar", requireRestaurante, rutaAsync(async (req, res) => {
