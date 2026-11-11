@@ -16,7 +16,7 @@ function configuracion() {
     usuario,
     password,
     secreto,
-    configurada: usuario.length > 0 && usuario.length <= 256 && password.length >= 16 && password.length <= 1024 && secreto.length >= 32,
+    configurada: usuario.length > 0 && usuario.length <= 256 && password.length >= 8 && password.length <= 1024 && secreto.length >= 32,
   };
 }
 
@@ -116,7 +116,7 @@ export async function sesionSuperadmin(req, res) {
 export async function loginSuperadmin(req, res) {
   if (req.method !== "POST") return enviar(res, 405, { error: "Usa POST" });
   const config = configuracion();
-  if (!config.configurada) return enviar(res, 503, { error: "Configura SUPERADMIN_USER, SUPERADMIN_PASSWORD (16 caracteres o más) y SUPERADMIN_SESSION_SECRET (32 o más) en Vercel." });
+  if (!config.configurada) return enviar(res, 503, { error: "Configura SUPERADMIN_USER, SUPERADMIN_PASSWORD (8 caracteres o más) y SUPERADMIN_SESSION_SECRET (32 o más) en Vercel." });
 
   const direccion = ip(req);
   const espera = bloqueado(direccion);
