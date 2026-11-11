@@ -8,6 +8,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { pnpmInvocation } from "./package-manager.mjs";
 
 const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const esWin = process.platform === "win32";
@@ -17,13 +18,18 @@ function run(cmd, args) {
   if (r.status !== 0) process.exit(r.status ?? 1);
 }
 
+function runPnpm(args) {
+  const pnpm = pnpmInvocation(args);
+  run(pnpm.cmd, pnpm.args);
+}
+
 if (process.env.VERCEL) {
-  run("pnpm", ["--filter", "@comandas/nube", "build"]);
+  runPnpm(["--filter", "@comandas/nube", "build"]);
   const dist = path.join(raiz, "apps/nube/dist");
   const salida = path.join(raiz, "public");
   fs.rmSync(salida, { recursive: true, force: true });
   fs.cpSync(dist, salida, { recursive: true });
   console.log(`[vercel] central copiada a ${salida}`);
 } else {
-  run("pnpm", ["-r", "build"]);
+  runPnpm(["-r", "build"]);
 }
