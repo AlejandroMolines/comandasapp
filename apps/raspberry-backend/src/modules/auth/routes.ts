@@ -1,7 +1,9 @@
+import { randomUUID } from "node:crypto";
 import { Router, type RequestHandler } from "express";
 import { z } from "zod";
 import { db } from "../../db/connection.js";
 import { firmarToken } from "../../middleware/auth.js";
+import { leerAlta } from "../../lib/altaCamarero.js";
 import { firmarSesion, hashSecreto, hashSecretoAsync, leerToken, sesionVigente, verificarSecretoAsync } from "../../lib/secretos.js";
 import { loginCorrecto, loginFallido, segundosBloqueo } from "../../middleware/login-limit.js";
 import type { Request, Response, NextFunction } from "express";
@@ -152,4 +154,47 @@ authRouter.post("/entrar", requireRestaurante, rutaAsync(async (req, res) => {
     dispositivoId,
   });
   res.json({ token, usuario: { id: usuario.id, nombre: usuario.nombre, rol: usuario.rol } });
+}));
+
+const altasPorVentana = new Map<number, number>();
+
+authRouter.post("/alta-camarero", rutaAsync(async (req, res) => {
+  const parsed = z.object({
+    token: z.string().min(10).max(2000),
+    nombre: z.string().trim().min(1).max(40),
+    pin: z.string().regex(/^\d{3,6}$/).optional(),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Revisa el nombre y el PIN (3 a 6 dígitos, o vacío)." });
+
+  const alta = leerAlta(parsed.data.token, RESTAURANTE_ID);
+  if (!alta) return res.status(401).json({ error: "El código QR ha caducado. Escanea otra vez el del PC." });
+
+  const ya = altasPorVentana.get(alta.exp) ?? 0;
+  if (ya >= 20) return res.status(429).json({ error: "Demasiadas altas con este código. Espera a que el QR del PC cambie." });
+
+  const nombre = parsed.data.nombre;
+  const repetido = db
+    .prepare(`SELECT 1 FROM usuarios WHERE restaurante_id = ? AND lower(nombre) = lower(?)`)
+    .get(RESTAURANTE_ID, nombre);
+  if (repetido) return res.status(409).json({ error: "Ese nombre ya existe. El encargado puede reactivarlo en Personal." });
+
+  const rest = db.prepare(`SELECT nombre FROM restaurantes WHERE id = ?`).get(RESTAURANTE_ID) as { nombre: string } | undefined;
+  if (!rest) return res.status(503).json({ error: "El restaurante todavía no está preparado." });
+
+  const id = randomUUID();
+  db.prepare(
+    `INSERT INTO usuarios (id, restaurante_id, nombre, rol, pin_hash, activo, creado_en)
+     VALUES (?, ?, ?, 'camarero', ?, 1, ?)`
+  ).run(id, RESTAURANTE_ID, nombre, parsed.data.pin ? hashSecreto(parsed.data.pin) : "", new Date().toISOString());
+  altasPorVentana.set(alta.exp, ya + 1);
+
+  const dispositivoId = `alta-${id.slice(0, 8)}`;
+  const token = firmarToken({ usuarioId: id, restauranteId: RESTAURANTE_ID, rol: "camarero", dispositivoId });
+  const tokenRestaurante = firmarSesion({ nivel: "restaurante", restauranteId: RESTAURANTE_ID, dispositivoId });
+  res.status(201).json({
+    token,
+    tokenRestaurante,
+    usuario: { id, nombre, rol: "camarero" },
+    restaurante: { nombre: rest.nombre },
+  });
 }));

@@ -7,13 +7,14 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
-    "test": "node --import tsx --test test/secretos.test.ts test/flujo.test.ts"
+    "test": "node --import tsx --test test/secretos.test.ts test/flujo.test.ts test/red.test.ts test/alta-camarero.test.ts"
   },
   "dependencies": {
     "@comandas/shared-types": "workspace:*",
     "better-sqlite3": "^11.3.0",
     "cors": "^2.8.5",
     "express": "^4.19.2",
+    "qrcode": "^1.5.4",
     "socket.io": "^4.7.5",
     "uuid": "^9.0.1",
     "zod": "^3.23.8"
@@ -23,6 +24,7 @@
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/node": "^20.14.15",
+    "@types/qrcode": "^1.5.6",
     "@types/uuid": "^9.0.8",
     "tsx": "^4.19.0",
     "typescript": "^5.5.4"

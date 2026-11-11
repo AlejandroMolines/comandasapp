@@ -81,6 +81,19 @@ simulada en `127.0.0.1:9100`. Con una térmica de verdad:
 
 Para desarrollar con recarga automática sigue existiendo `pnpm start:all`.
 
+### Añadir un camarero con el móvil
+
+En el PC, **Personal → Añadir camarero**. Sale un código QR y, debajo, la dirección
+por si hay que escribirla. El QR usa la IP de la red del local (la WiFi, o la
+`.1` del punto de acceso si el Raspberry reparte la WiFi) y el puerto del
+servidor. Se genera en el propio equipo, sin internet.
+
+El código cambia solo cada 3 minutos y la pantalla lo refresca. Quien lo
+escanea, en esa WiFi, pone su nombre y un PIN opcional y entra ya como
+camarero. No hace falta que el encargado lo apruebe. Para quitarlo, en
+Personal se desactiva como cualquier otro perfil. Una foto del QR solo sirve
+hasta que caduca.
+
 ### Avisar a la central
 
 La central está publicada en <https://comandasapp-theta.vercel.app>.
