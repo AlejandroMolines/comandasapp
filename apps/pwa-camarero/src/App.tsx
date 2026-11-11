@@ -8,7 +8,7 @@ import { API, api, cerrarSesion, getToken, getUsuario } from "./api";
 import { uuid } from "./uuid";
 import { BotonModo } from "./BotonModo";
 import { VERSION } from "./version";
-import { Badge, Button } from "@/components/ui";
+import { Badge, Button, Select } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { VistaCarta } from "./admin/Carta";
 import { VistaAjustes, VistaImpresoras, VistaPersonal, VistaSalas, VistaTurnos } from "./admin/Paneles";
@@ -67,14 +67,17 @@ function LayoutAdmin({ onSalir }: { onSalir: () => void }) {
 
   return (
     <div className="flex min-h-dvh max-md:flex-col">
-      <aside className="sticky top-0 flex h-dvh w-56 shrink-0 flex-col border-r bg-card p-3 max-md:static max-md:h-auto max-md:w-full max-md:flex-row max-md:items-center max-md:overflow-x-auto max-md:py-2">
-        <div className="flex items-center gap-2.5 px-2 pb-4 max-md:pb-0">
+      <aside className="sticky top-0 flex h-dvh w-56 shrink-0 flex-col border-r bg-card p-3 max-md:static max-md:h-auto max-md:w-full max-md:flex-row max-md:items-center max-md:gap-2 max-md:py-2">
+        <div className="flex items-center gap-2.5 px-2 pb-4 max-md:shrink-0 max-md:pb-0">
           <span className="flex size-8 items-center justify-center rounded-lg bg-primary font-display text-lg font-bold text-primary-foreground">C</span>
           <b className="font-display max-md:hidden">Comandas</b>
         </div>
-        <nav className="flex flex-1 flex-col gap-0.5 max-md:flex-row">
+        <nav className="flex flex-1 flex-col gap-0.5 max-md:hidden">
           {NAV_ADMIN.map(({ id, nombre, Icono }) => (
             <button key={id} onClick={() => setSeccion(id)}
+              aria-label={nombre}
+              aria-current={seccion === id ? "page" : undefined}
+              title={nombre}
               className={cn(
                 "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
                 seccion === id && "bg-primary/15 text-primary hover:bg-primary/15 hover:text-primary"
@@ -84,7 +87,15 @@ function LayoutAdmin({ onSalir }: { onSalir: () => void }) {
             </button>
           ))}
         </nav>
-        <div className="flex items-center gap-2 border-t px-2 pt-3 text-sm text-muted-foreground max-md:border-0 max-md:pt-0">
+        <Select
+          aria-label="Sección de administración"
+          className="hidden max-md:block max-md:min-w-0 max-md:flex-1"
+          value={seccion}
+          onChange={(e) => setSeccion(e.target.value as SeccionAdmin)}
+        >
+          {NAV_ADMIN.map(({ id, nombre }) => <option key={id} value={id}>{nombre}</option>)}
+        </Select>
+        <div className="flex items-center gap-2 border-t px-2 pt-3 text-sm text-muted-foreground max-md:shrink-0 max-md:border-0 max-md:p-0">
           <span className="flex-1 max-md:hidden">{usuario?.nombre}</span>
           <BotonModo />
           <Button variant="ghost" size="icon-sm" onClick={onSalir} title="Salir"><LogOut /></Button>

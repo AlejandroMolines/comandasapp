@@ -163,14 +163,14 @@ function FormExtra({ inicial, categorias, productos, onOk, onCerrar }: {
     <Dialog open onOpenChange={(o) => !o && onCerrar()} title={inicial ? "Editar extra" : "Nuevo extra"}>
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
-          <Label>Nombre</Label>
-          <Input autoFocus placeholder="Extra de queso / Sin cebolla" value={nombre}
+          <Label htmlFor="extra-nombre">Nombre</Label>
+          <Input id="extra-nombre" autoFocus placeholder="Extra de queso / Sin cebolla" value={nombre}
             onChange={(e) => setNombre(e.target.value)} />
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label>Precio (€)</Label>
-          <Input inputMode="decimal" className="font-mono" placeholder="0,00" value={precio}
+          <Label htmlFor="extra-precio">Precio (€)</Label>
+          <Input id="extra-precio" inputMode="decimal" className="font-mono" placeholder="0,00" value={precio}
             onChange={(e) => setPrecio(e.target.value)} />
           <p className="text-xs text-muted-foreground">
             Déjalo en <b>0</b> si es una modificación que no cambia el precio. Si pones un
@@ -179,8 +179,8 @@ function FormExtra({ inicial, categorias, productos, onOk, onCerrar }: {
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label>¿Dónde se puede usar?</Label>
-          <div className="flex gap-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">¿Dónde se puede usar?</p>
+          <div className="flex gap-2" role="group" aria-label="Dónde se puede usar">
             <Button className="flex-1" variant={ambito === "general" ? "default" : "secondary"}
               onClick={() => setAmbito("general")}>
               En todo
@@ -195,7 +195,7 @@ function FormExtra({ inicial, categorias, productos, onOk, onCerrar }: {
         {ambito === "especifico" && (
           <>
             <div className="flex flex-col gap-1.5">
-              <Label>Categorías</Label>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Categorías</p>
               <p className="text-xs text-muted-foreground">
                 Al elegir una categoría, el extra se ofrece también en sus subcategorías.
               </p>
@@ -215,7 +215,7 @@ function FormExtra({ inicial, categorias, productos, onOk, onCerrar }: {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label>Productos concretos (opcional)</Label>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Productos concretos (opcional)</p>
               <div className="flex max-h-32 flex-wrap gap-1.5 overflow-y-auto">
                 {productos.map((p) => (
                   <button key={p.id} onClick={() => alternar(prods, setProds, p.id)}
@@ -234,8 +234,8 @@ function FormExtra({ inicial, categorias, productos, onOk, onCerrar }: {
         )}
 
         <div className="flex flex-col gap-1.5">
-          <Label>Grupo (opcional)</Label>
-          <Input placeholder="Punto de la carne, Salsas…" value={grupo}
+          <Label htmlFor="extra-grupo">Grupo (opcional)</Label>
+          <Input id="extra-grupo" placeholder="Punto de la carne, Salsas…" value={grupo}
             onChange={(e) => setGrupo(e.target.value)} />
         </div>
 

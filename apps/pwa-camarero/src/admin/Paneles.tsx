@@ -58,7 +58,8 @@ export function VistaSalas() {
                 )}>
                   <b className="font-display text-lg">{m.nombre}</b>
                   <span className="text-xs text-muted-foreground">{m.capacidad} pax</span>
-                  <Button variant="ghost" size="icon-sm" className="absolute right-0.5 top-0.5 opacity-0 transition-opacity group-hover:opacity-100"
+                  <Button variant="ghost" size="icon-sm" aria-label={`Eliminar mesa ${m.nombre}`} title={`Eliminar mesa ${m.nombre}`}
+                    className="absolute right-0.5 top-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
                     onClick={() => confirm(`¿Eliminar ${m.nombre}?`) && accion(() => api(`/espacios/mesas/${m.id}`, { method: "DELETE" }), "Mesa eliminada")}>
                     <Trash2 className="!size-3.5" />
                   </Button>
@@ -92,8 +93,8 @@ function FormZona({ abierto, onOk, onCerrar }: { abierto: boolean; onOk: (n: str
     <Dialog open={abierto} onOpenChange={(o) => !o && onCerrar()} title="Nueva zona">
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
-          <Label>Nombre</Label>
-          <Input autoFocus placeholder="Sala, Terraza, Barra…" value={nombre} onChange={(e) => setNombre(e.target.value)}
+          <Label htmlFor="zona-nombre">Nombre</Label>
+          <Input id="zona-nombre" autoFocus placeholder="Sala, Terraza, Barra…" value={nombre} onChange={(e) => setNombre(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && nombre && onOk(nombre)} />
         </div>
         <Button disabled={!nombre} onClick={() => onOk(nombre)}>Crear</Button>
@@ -135,12 +136,12 @@ function FormMesa({ abierto, zona, onIndividual, onLote, onCerrar }: {
       {tab === "una" ? (
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <Label>Nombre</Label>
-            <Input autoFocus placeholder="S1, T3…" value={nombre} onChange={(e) => setNombre(e.target.value)} />
+            <Label htmlFor="mesa-nombre">Nombre</Label>
+            <Input id="mesa-nombre" autoFocus placeholder="S1, T3…" value={nombre} onChange={(e) => setNombre(e.target.value)} />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label>Comensales</Label>
-            <Input inputMode="numeric" className="font-mono" value={capacidad} onChange={(e) => setCapacidad(e.target.value)} />
+            <Label htmlFor="mesa-capacidad">Comensales</Label>
+            <Input id="mesa-capacidad" inputMode="numeric" className="font-mono" value={capacidad} onChange={(e) => setCapacidad(e.target.value)} />
           </div>
           <Button disabled={!nombre} onClick={() => onIndividual(nombre, parseInt(capacidad) || 4)}>Crear</Button>
         </div>
@@ -148,21 +149,21 @@ function FormMesa({ abierto, zona, onIndividual, onLote, onCerrar }: {
         <div className="flex flex-col gap-4">
           <div className="flex gap-3">
             <div className="flex w-24 flex-col gap-1.5">
-              <Label>Letra</Label>
-              <Input placeholder="T" maxLength={4} className="font-mono" value={prefijo} onChange={(e) => setPrefijo(e.target.value)} />
+              <Label htmlFor="mesas-prefijo">Letra</Label>
+              <Input id="mesas-prefijo" placeholder="T" maxLength={4} className="font-mono" value={prefijo} onChange={(e) => setPrefijo(e.target.value)} />
             </div>
             <div className="flex flex-1 flex-col gap-1.5">
-              <Label>Cuántas</Label>
-              <Input inputMode="numeric" className="font-mono" value={cantidad} onChange={(e) => setCantidad(e.target.value)} />
+              <Label htmlFor="mesas-cantidad">Cuántas</Label>
+              <Input id="mesas-cantidad" inputMode="numeric" className="font-mono" value={cantidad} onChange={(e) => setCantidad(e.target.value)} />
             </div>
             <div className="flex w-24 flex-col gap-1.5">
-              <Label>Desde</Label>
-              <Input inputMode="numeric" className="font-mono" value={desde} onChange={(e) => setDesde(e.target.value)} />
+              <Label htmlFor="mesas-desde">Desde</Label>
+              <Input id="mesas-desde" inputMode="numeric" className="font-mono" value={desde} onChange={(e) => setDesde(e.target.value)} />
             </div>
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label>Comensales por mesa</Label>
-            <Input inputMode="numeric" className="font-mono" value={capacidad} onChange={(e) => setCapacidad(e.target.value)} />
+            <Label htmlFor="mesas-capacidad-lote">Comensales por mesa</Label>
+            <Input id="mesas-capacidad-lote" inputMode="numeric" className="font-mono" value={capacidad} onChange={(e) => setCapacidad(e.target.value)} />
           </div>
           {previa && (
             <p className="rounded-md bg-muted px-3 py-2 font-mono text-xs text-muted-foreground">
@@ -255,7 +256,8 @@ export function VistaImpresoras() {
                     {d.protocolo === "websocket_kds" && `canal ${d.config.canal}`}
                   </span>
                   <Badge className="self-start">{d.tipo.replace(/_/g, " ")}</Badge>
-                  <Button variant="ghost" size="icon-sm" className="absolute bottom-3 right-3 opacity-0 transition-opacity group-hover:opacity-100"
+                  <Button variant="ghost" size="icon-sm" aria-label={`Eliminar ${d.nombre}`} title={`Eliminar ${d.nombre}`}
+                    className="absolute bottom-3 right-3 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
                     onClick={() => confirm(`¿Eliminar "${d.nombre}"?`) && accion(() => api(`/destinos/${d.id}`, { method: "DELETE" }), "Destino eliminado")}>
                     <Trash2 />
                   </Button>
@@ -292,20 +294,20 @@ function FormDestino({ abierto, onOk, onCerrar }: { abierto: boolean; onOk: (b: 
     <Dialog open={abierto} onOpenChange={(o) => !o && onCerrar()} title="Nueva impresora o pantalla">
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
-          <Label>Nombre</Label>
-          <Input autoFocus placeholder="Barra, Cocina fría, Caja 1…" value={nombre} onChange={(e) => setNombre(e.target.value)} />
+          <Label htmlFor="destino-nombre">Nombre</Label>
+          <Input id="destino-nombre" autoFocus placeholder="Barra, Cocina fría, Caja 1…" value={nombre} onChange={(e) => setNombre(e.target.value)} />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label>Función</Label>
-          <Select value={tipo} onChange={(e) => setTipo(e.target.value)}>
+          <Label htmlFor="destino-tipo">Función</Label>
+          <Select id="destino-tipo" value={tipo} onChange={(e) => setTipo(e.target.value)}>
             <option value="impresora_termica">Comandas (cocina/barra)</option>
             <option value="pantalla_kds">Pantalla de cocina</option>
             <option value="impresora_ticket">Tickets de pago (caja)</option>
           </Select>
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label>Conexión</Label>
-          <Select value={protocolo} onChange={(e) => setProtocolo(e.target.value)}>
+          <Label htmlFor="destino-protocolo">Conexión</Label>
+          <Select id="destino-protocolo" value={protocolo} onChange={(e) => setProtocolo(e.target.value)}>
             <option value="escpos_red">Red (IP)</option>
             <option value="escpos_usb">USB</option>
             <option value="websocket_kds">Pantalla conectada</option>
@@ -314,25 +316,25 @@ function FormDestino({ abierto, onOk, onCerrar }: { abierto: boolean; onOk: (b: 
         {protocolo === "escpos_red" && (
           <div className="flex gap-3">
             <div className="flex flex-1 flex-col gap-1.5">
-              <Label>IP</Label>
-              <Input className="font-mono" placeholder="192.168.1.50" value={ip} onChange={(e) => setIp(e.target.value)} />
+              <Label htmlFor="destino-ip">IP</Label>
+              <Input id="destino-ip" className="font-mono" placeholder="192.168.1.50" value={ip} onChange={(e) => setIp(e.target.value)} />
             </div>
             <div className="flex w-24 flex-col gap-1.5">
-              <Label>Puerto</Label>
-              <Input className="font-mono" value={puerto} onChange={(e) => setPuerto(e.target.value)} />
+              <Label htmlFor="destino-puerto">Puerto</Label>
+              <Input id="destino-puerto" className="font-mono" value={puerto} onChange={(e) => setPuerto(e.target.value)} />
             </div>
           </div>
         )}
         {protocolo === "escpos_usb" && (
           <div className="flex flex-col gap-1.5">
-            <Label>Dispositivo</Label>
-            <Input className="font-mono" value={ruta} onChange={(e) => setRuta(e.target.value)} />
+            <Label htmlFor="destino-dispositivo">Dispositivo</Label>
+            <Input id="destino-dispositivo" className="font-mono" value={ruta} onChange={(e) => setRuta(e.target.value)} />
           </div>
         )}
         {protocolo === "websocket_kds" && (
           <div className="flex flex-col gap-1.5">
-            <Label>Canal</Label>
-            <Input placeholder="cocina-fria" value={canal} onChange={(e) => setCanal(e.target.value)} />
+            <Label htmlFor="destino-canal">Canal</Label>
+            <Input id="destino-canal" placeholder="cocina-fria" value={canal} onChange={(e) => setCanal(e.target.value)} />
           </div>
         )}
         <Button disabled={!valido} onClick={() => onOk({ nombre, tipo, protocolo, config })}>Añadir</Button>
@@ -408,8 +410,8 @@ export function VistaTurnos() {
                   a menudo se cuenta el cajón un rato después de abrir. */}
               <div className="flex items-end gap-3 border-b pb-4">
                 <div className="flex flex-1 flex-col gap-1.5">
-                  <Label>Fondo de caja fijo (€)</Label>
-                  <Input inputMode="decimal" className="font-mono" placeholder="0,00" value={inicial}
+                  <Label htmlFor="turno-fondo-caja">Fondo de caja fijo (€)</Label>
+                  <Input id="turno-fondo-caja" inputMode="decimal" className="font-mono" placeholder="0,00" value={inicial}
                     onChange={(e) => setInicial(e.target.value.replace(",", "."))} />
                 </div>
                 <Button variant="secondary" disabled={!inicial} onClick={guardarInicial}>Guardar</Button>
@@ -421,8 +423,8 @@ export function VistaTurnos() {
 
               <div className="flex items-end gap-3">
                 <div className="flex flex-1 flex-col gap-1.5">
-                  <Label>Efectivo contado al cierre (€)</Label>
-                  <Input inputMode="decimal" className="font-mono" placeholder="0,00" value={caja}
+                  <Label htmlFor="turno-efectivo-cierre">Efectivo contado al cierre (€)</Label>
+                  <Input id="turno-efectivo-cierre" inputMode="decimal" className="font-mono" placeholder="0,00" value={caja}
                     onChange={(e) => setCaja(e.target.value.replace(",", "."))} />
                 </div>
                 <Button variant="destructive" onClick={cerrar} disabled={!caja}>Cerrar turno y abrir el siguiente</Button>
@@ -516,12 +518,12 @@ function FormCamarero({ abierto, onOk, onCerrar }: { abierto: boolean; onOk: (n:
     <Dialog open={abierto} onOpenChange={(o) => !o && onCerrar()} title="Nuevo camarero">
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
-          <Label>Nombre</Label>
-          <Input autoFocus value={nombre} onChange={(e) => setNombre(e.target.value)} />
+          <Label htmlFor="camarero-nombre">Nombre</Label>
+          <Input id="camarero-nombre" autoFocus value={nombre} onChange={(e) => setNombre(e.target.value)} />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label>PIN (opcional — sin PIN entra directo)</Label>
-          <Input inputMode="numeric" className="font-mono" maxLength={6} value={pin}
+          <Label htmlFor="camarero-pin">PIN (opcional — sin PIN entra directo)</Label>
+          <Input id="camarero-pin" inputMode="numeric" className="font-mono" maxLength={6} value={pin}
             onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))} />
         </div>
         <Button disabled={!nombre || (pin.length > 0 && pin.length < 3)} onClick={() => onOk(nombre, pin)}>Crear</Button>
@@ -596,25 +598,25 @@ export function VistaAjustes() {
             </p>
           )}
           <div className="flex flex-col gap-1.5">
-            <Label>Razón social o nombre y apellidos</Label>
-            <Input placeholder="Bar Ejemplo S.L. / Juan García Pérez" value={fiscal.razonSocial}
+            <Label htmlFor="fiscal-razon-social">Razón social o nombre y apellidos</Label>
+            <Input id="fiscal-razon-social" placeholder="Bar Ejemplo S.L. / Juan García Pérez" value={fiscal.razonSocial}
               onChange={(e) => setFiscal({ ...fiscal, razonSocial: e.target.value })} />
           </div>
           <div className="flex gap-3">
             <div className="flex flex-1 flex-col gap-1.5">
-              <Label>NIF / CIF</Label>
-              <Input className="font-mono uppercase" placeholder="B12345678" value={fiscal.nif}
+              <Label htmlFor="fiscal-nif">NIF / CIF</Label>
+              <Input id="fiscal-nif" className="font-mono uppercase" placeholder="B12345678" value={fiscal.nif}
                 onChange={(e) => setFiscal({ ...fiscal, nif: e.target.value })} />
             </div>
             <div className="flex w-32 flex-col gap-1.5">
-              <Label>Serie</Label>
-              <Input className="font-mono uppercase" placeholder="FAC" value={fiscal.serie}
+              <Label htmlFor="fiscal-serie">Serie</Label>
+              <Input id="fiscal-serie" className="font-mono uppercase" placeholder="FAC" value={fiscal.serie}
                 onChange={(e) => setFiscal({ ...fiscal, serie: e.target.value })} />
             </div>
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label>Domicilio fiscal</Label>
-            <Input placeholder="Calle Mayor 1, 28001 Madrid" value={fiscal.direccion}
+            <Label htmlFor="fiscal-direccion">Domicilio fiscal</Label>
+            <Input id="fiscal-direccion" placeholder="Calle Mayor 1, 28001 Madrid" value={fiscal.direccion}
               onChange={(e) => setFiscal({ ...fiscal, direccion: e.target.value })} />
           </div>
           <p className="text-xs text-muted-foreground">
@@ -680,8 +682,8 @@ export function VistaAjustes() {
           </div>
           <div className="flex items-end gap-3">
             <div className="flex flex-col gap-1.5">
-              <Label>O elige un color libre</Label>
-              <input type="color" value={libre} onChange={(e) => setLibre(e.target.value)}
+              <Label htmlFor="tema-color-libre">O elige un color libre</Label>
+              <input id="tema-color-libre" type="color" value={libre} onChange={(e) => setLibre(e.target.value)}
                 className="h-10 w-20 cursor-pointer rounded-md border border-input bg-transparent p-1" />
             </div>
             <Button variant="secondary" onClick={() => { aplicarAcento(libre, tintaPara(libre)); avisar("Color aplicado"); }}>

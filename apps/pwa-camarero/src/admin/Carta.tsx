@@ -186,8 +186,8 @@ function FormSimple({ abierto, titulo, placeholder, onOk, onCerrar }: {
     <Dialog open={abierto} onOpenChange={(o) => !o && onCerrar()} title={titulo}>
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
-          <Label>Nombre</Label>
-          <Input autoFocus placeholder={placeholder} value={nombre} onChange={(e) => setNombre(e.target.value)}
+          <Label htmlFor="carta-simple-nombre">Nombre</Label>
+          <Input id="carta-simple-nombre" autoFocus placeholder={placeholder} value={nombre} onChange={(e) => setNombre(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && nombre && onOk(nombre)} />
         </div>
         <Button disabled={!nombre} onClick={() => onOk(nombre)}>Crear</Button>
@@ -215,17 +215,17 @@ function FormProducto({ abierto, titulo, inicial, onOk, onCerrar }: {
     <Dialog open={abierto} onOpenChange={(o) => !o && onCerrar()} title={titulo}>
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
-          <Label>Nombre</Label>
-          <Input autoFocus value={nombre} onChange={(e) => setNombre(e.target.value)} />
+          <Label htmlFor="producto-nombre">Nombre</Label>
+          <Input id="producto-nombre" autoFocus value={nombre} onChange={(e) => setNombre(e.target.value)} />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label>Precio (€)</Label>
-          <Input inputMode="decimal" className="font-mono" placeholder="0,00" value={precio}
+          <Label htmlFor="producto-precio">Precio (€)</Label>
+          <Input id="producto-precio" inputMode="decimal" className="font-mono" placeholder="0,00" value={precio}
             onChange={(e) => setPrecio(e.target.value.replace(",", "."))} />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label>IVA aplicable</Label>
-          <div className="flex gap-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">IVA aplicable</p>
+          <div className="flex gap-2" role="group" aria-label="IVA aplicable">
             {[10, 21].map((t) => (
               <Button key={t} className="flex-1" variant={iva === t ? "default" : "secondary"} onClick={() => setIva(t)}>
                 {t}%
