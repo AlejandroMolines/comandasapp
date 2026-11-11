@@ -13,7 +13,7 @@ Production:
 | Variable | Valor |
 |---|---|
 | `SUPERADMIN_USER` | Tu usuario privado |
-| `SUPERADMIN_PASSWORD` | Una frase propia de al menos 16 caracteres |
+| `SUPERADMIN_PASSWORD` | Una contraseña de al menos 8 caracteres |
 | `SUPERADMIN_SESSION_SECRET` | Secreto aleatorio de al menos 32 caracteres |
 | `DEMO_RESTAURANT_URL` | URL HTTPS del backend remoto de pruebas |
 
