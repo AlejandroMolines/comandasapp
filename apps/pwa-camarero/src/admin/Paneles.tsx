@@ -1,4 +1,4 @@
-import { Monitor, Moon, Plus, Printer, RefreshCw, Sun, Trash2, Usb } from "lucide-react";
+import { Monitor, Moon, Plus, Printer, QrCode, RefreshCw, Sun, Trash2, Usb } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Dialog, Input, Label, Select, Switch, Vacio } from "@/components/ui";
@@ -471,6 +471,7 @@ interface Usuario { id: string; nombre: string; rol: string; activo: number }
 export function VistaPersonal() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [crear, setCrear] = useState(false);
+  const [qr, setQr] = useState(false);
   const [toast, avisar] = useToast();
 
   const cargar = useCallback(async () => setUsuarios(await api<Usuario[]>("/usuarios")), []);
@@ -486,6 +487,7 @@ export function VistaPersonal() {
       {toast}
       <div className="flex items-center gap-3">
         <h2 className="flex-1 text-xl">Personal</h2>
+        <Button variant="secondary" onClick={() => setQr(true)}><QrCode /> Añadir camarero</Button>
         <Button variant="secondary" onClick={() => setCrear(true)}><Plus /> Nuevo camarero</Button>
       </div>
       <Card>
@@ -506,7 +508,48 @@ export function VistaPersonal() {
       </Card>
       <FormCamarero abierto={crear} onCerrar={() => setCrear(false)}
         onOk={(nombre, pin) => accion(() => api("/usuarios", { method: "POST", body: { nombre, rol: "camarero", ...(pin ? { pin } : {}) } }), "Camarero creado")} />
+      <QrAlta abierto={qr} onCerrar={() => { setQr(false); void cargar(); }} />
     </div>
+  );
+}
+
+function QrAlta({ abierto, onCerrar }: { abierto: boolean; onCerrar: () => void }) {
+  const [datos, setDatos] = useState<{ url: string; svg: string; segundos: number } | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!abierto) return;
+    let vivo = true;
+    const cargar = () => {
+      void api<{ url: string; svg: string; segundos: number }>("/usuarios/alta-qr")
+        .then((r) => { if (vivo) { setDatos(r); setError(""); } })
+        .catch((e: Error) => { if (vivo) setError(e.message); });
+    };
+    cargar();
+    const t = setInterval(cargar, 15_000);
+    return () => { vivo = false; clearInterval(t); };
+  }, [abierto]);
+
+  return (
+    <Dialog open={abierto} onOpenChange={(o) => !o && onCerrar()} title="Añadir camarero">
+      <div className="flex flex-col items-center gap-3">
+        <p className="text-center text-sm text-muted-foreground">
+          El móvil, en la misma WiFi, escanea este código y se registra. El código cambia solo cada 3 minutos.
+        </p>
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        {datos && (
+          <>
+            <img
+              alt="Código QR para registrarse como camarero"
+              className="w-56 rounded-lg bg-white p-2"
+              src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(datos.svg)}`}
+            />
+            <p className="break-all text-center font-mono text-xs text-muted-foreground">{datos.url}</p>
+            <p className="text-xs text-muted-foreground">Caduca en {datos.segundos}s · se renueva solo</p>
+          </>
+        )}
+      </div>
+    </Dialog>
   );
 }
 

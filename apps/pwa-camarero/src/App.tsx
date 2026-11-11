@@ -23,6 +23,7 @@ import {
 import { cargarTema } from "./tema";
 import { useToast } from "./toast";
 import { Acceso } from "./acceso";
+import { AltaCamarero } from "./alta";
 import { Cobro, Comanda, Sala, type ComandaAbierta, type Linea } from "./vistas-camarero";
 
 cargarTema();
@@ -51,6 +52,7 @@ const NAV_ADMIN: { id: SeccionAdmin; nombre: string; Icono: typeof BarChart3 }[]
 
 export default function App() {
   const [logueado, setLogueado] = useState(!!getToken());
+  if (window.location.pathname === "/alta") return <AltaCamarero />;
   const usuario = getUsuario();
   const esAdmin = usuario?.rol === "admin";
 

@@ -1,8 +1,12 @@
+import os from "node:os";
 import { Router } from "express";
+import QRCode from "qrcode";
 import { v4 as uuid } from "uuid";
 import { z } from "zod";
 import { db } from "../../db/connection.js";
 import { requireAuth, requireRole } from "../../middleware/auth.js";
+import { firmarAlta } from "../../lib/altaCamarero.js";
+import { elegirIpLan, type InterfazRed } from "../../lib/red.js";
 import { hashSecreto } from "../../lib/secretos.js";
 
 export const usuariosRouter = Router();
@@ -68,3 +72,35 @@ usuariosRouter.patch("/:id/activo", requireAuth, requireRole("admin"), (req, res
   }
   res.json({ id: req.params.id, activo: parsed.data.activo });
 });
+
+usuariosRouter.get("/alta-qr", requireAuth, requireRole("admin"), (req, res, next) => {
+  void emitirQrAlta(res).catch(next);
+});
+
+async function emitirQrAlta(res: import("express").Response) {
+  const interfaces: InterfazRed[] = [];
+  for (const [nombre, lista] of Object.entries(os.networkInterfaces())) {
+    for (const iface of lista ?? []) {
+      interfaces.push({
+        nombre,
+        direccion: iface.address,
+        interna: iface.internal,
+        familia: String(iface.family),
+      });
+    }
+  }
+  const ip = elegirIpLan(interfaces);
+  if (!ip) return res.status(503).json({ error: "No encuentro una IP de la red local para el móvil" });
+
+  const puerto = Number(process.env.PORT ?? 3000);
+  const protocolo = process.env.TLS_CERT_FILE && process.env.TLS_KEY_FILE ? "https" : "http";
+  const alta = firmarAlta(RESTAURANTE_ID);
+  const url = `${protocolo}://${ip}:${puerto}/alta?t=${encodeURIComponent(alta.token)}`;
+  const svg = await QRCode.toString(url, { type: "svg", margin: 1, width: 280 });
+  res.json({
+    url,
+    svg,
+    expiraEn: alta.expiraEn,
+    segundos: Math.max(0, alta.exp - Math.floor(Date.now() / 1000)),
+  });
+}
