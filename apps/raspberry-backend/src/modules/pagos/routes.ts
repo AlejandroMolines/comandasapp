@@ -171,6 +171,8 @@ pagosRouter.post("/comandas/:comandaId/pagos", requireAuth, (req, res) => {
     importe,
     comandaCerrada,
   });
+  io?.to(RESTAURANTE_ID).emit("comanda:actualizada", { comandaId: comanda.id });
+  io?.to(RESTAURANTE_ID).emit("sala:actualizada");
   if (comandaCerrada && comanda.mesa_id) {
     io?.to(RESTAURANTE_ID).emit("mesa:liberada", { mesaId: comanda.mesa_id });
   }

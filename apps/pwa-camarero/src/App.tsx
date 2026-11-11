@@ -152,14 +152,31 @@ function FlujoSala({ onSalir, embebido = false }: { onSalir?: () => void; embebi
     void pendientes().then(setNPendientes);
     const off = onCola((n, msg) => { setNPendientes(n); if (msg) avisar(msg, true); });
 
-    const s = io(API || "/", { transports: ["websocket", "polling"] });
+    const s = io(API || "/", { auth: { token: getToken() }, transports: ["websocket", "polling"] });
     socketRef.current = s;
-    s.on("mesa:liberada", () => void recargar());
-    s.on("ronda:creada", () => void recargar());
-    s.on("comanda:actualizada", () => { void recargar(); setRecargaComanda((n) => n + 1); });
-    s.on("producto:disponibilidad", () => void recargar());
+    let temporizador: ReturnType<typeof setTimeout> | undefined;
+    const refrescar = () => {
+      if (temporizador) clearTimeout(temporizador);
+      temporizador = setTimeout(() => {
+        void recargar();
+        setRecargaComanda((n) => n + 1);
+      }, 80);
+    };
+    s.on("connect", refrescar);
+    s.on("sala:actualizada", refrescar);
+    s.on("producto:disponibilidad", refrescar);
     s.on("impresion:fallida", (d: { destino: string }) => avisar(`⚠ ${d.destino} no responde — comanda sin imprimir`, true));
-    return () => { off(); s.disconnect(); };
+    s.on("connect_error", (error) => {
+      if (error.message === "unauthorized") {
+        cerrarSesion();
+        window.location.reload();
+      }
+    });
+    return () => {
+      off();
+      if (temporizador) clearTimeout(temporizador);
+      s.disconnect();
+    };
   }, [recargar, avisar]);
 
   if (!maestros) return <div className="p-10 text-center text-sm text-muted-foreground">Cargando el servicio…</div>;
@@ -247,7 +264,16 @@ function FlujoSala({ onSalir, embebido = false }: { onSalir?: () => void; embebi
             if ((await pendientes()) > 0) return avisar("Hay comandas sin sincronizar — no se puede cobrar sin conexión", true);
             setVista({ v: "cobro", comandaId: vista.comandaId, titulo: vista.titulo, mesaId: vista.mesaId });
           }}
-          onVolver={() => { setVista({ v: "mesas" }); void recargar(); }} />
+          onVolver={(vacia) => {
+            if (vacia) {
+              void encolar({
+                uuid: uuid(), tipo: "cerrar_comanda_vacia",
+                payload: { comandaId: vista.comandaId },
+              });
+            }
+            setVista({ v: "mesas" });
+            void recargar();
+          }} />
       )}
       {vista.v === "cobro" && (
         <Cobro comandaId={vista.comandaId} titulo={vista.titulo}

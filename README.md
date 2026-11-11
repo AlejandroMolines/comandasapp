@@ -241,14 +241,19 @@ pnpm install
 pnpm -r build                       # compila tipos, backend, worker y PWA
 cp apps/raspberry-backend/src/db/schema.sql apps/raspberry-backend/dist/db/
 
-# El backend sirve la PWA compilada él solo:
-node apps/raspberry-backend/dist/server.js     # servicio systemd 1
-node apps/printer-worker/dist/worker.js        # servicio systemd 2
+# Producción: configura un certificado de confianza para móviles y el nombre/IP del Raspberry.
+# Terminal 1: backend (desde apps/raspberry-backend)
+cd apps/raspberry-backend
+NODE_ENV=production TLS_CERT_FILE=/etc/comandas/tls/fullchain.pem TLS_KEY_FILE=/etc/comandas/tls/private-key.pem CORS_ORIGINS=https://raspberry.local:3000 node dist/server.js
+# Terminal 2: worker
+cd apps/printer-worker
+BACKEND_URL=https://raspberry.local:3000 DB_PATH=../raspberry-backend/data/local.sqlite NODE_EXTRA_CA_CERTS=/etc/comandas/tls/ca.pem node dist/worker.js
 ```
 
-Los móviles de los camareros abren `http://<ip-del-raspberry>:3000` en el
-navegador y añaden la app a la pantalla de inicio (es una PWA instalable).
-Todo es same-origin: API, websocket y app en el mismo puerto. Variables útiles:
+Los móviles de los camareros abren `https://raspberry.local:3000`
+en el navegador y añaden la app a la pantalla de inicio. El certificado debe
+estar emitido para ese nombre/IP y ser de confianza en los móviles. Todo es
+same-origin: API, websocket y app en el mismo puerto. Variables útiles:
 `PORT`, `RESTAURANTE_ID`, `DB_PATH` (backend y worker deben compartir `DB_PATH`).
 
 ## PWA del camarero (añadido)
