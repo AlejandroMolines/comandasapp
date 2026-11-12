@@ -166,6 +166,8 @@ function FlujoSala({ onSalir, embebido = false }: { onSalir?: () => void; embebi
     };
     s.on("connect", refrescar);
     s.on("sala:actualizada", refrescar);
+    s.on("impresion:ok", refrescar);
+    s.on("impresion:cuenta_enviada", refrescar);
     s.on("producto:disponibilidad", refrescar);
     s.on("impresion:fallida", (d: { destino: string }) => avisar(`⚠ ${d.destino} no responde — comanda sin imprimir`, true));
     s.on("connect_error", (error) => {

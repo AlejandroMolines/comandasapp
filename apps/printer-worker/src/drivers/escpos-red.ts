@@ -11,6 +11,24 @@ const ANCHO = 32;
 function renderTicket(ticket: TicketData): Buffer {
   const b = new EscPosBuilder().init();
 
+  if (ticket.tipo === "cuenta") {
+    b.align("center").bold(true).sizeBig().line("CUENTA").sizeNormal().bold(false);
+    b.line("PRECUENTA - NO ES FACTURA");
+    b.line(`${ticket.mesa ? `Mesa ${ticket.mesa}` : "Para llevar"} · ${ticket.camarero}`);
+    b.line(`Fecha: ${new Date().toLocaleDateString("es-ES")}  ${ticket.hora}`);
+    b.align("left").separator();
+    for (const l of ticket.lineas) {
+      b.line(columnas(`${l.cantidad} x ${l.nombre}`, ((l.precio ?? 0) * l.cantidad).toFixed(2), ANCHO));
+      for (const ex of l.extras ?? []) b.line(ex.precio > 0 ? `   + ${ex.nombre} (${ex.precio.toFixed(2)})` : `   · ${ex.nombre}`);
+      if (l.notas) b.line(`   ${l.notas}`);
+    }
+    b.separator();
+    if ((ticket.descuento ?? 0) > 0) b.line(columnas("Descuento", `-${ticket.descuento!.toFixed(2)}`, ANCHO));
+    b.bold(true).sizeBig().line(`TOTAL: ${(ticket.total ?? 0).toFixed(2)} EUR`);
+    b.sizeNormal().bold(false).separator().align("center").line("Pendiente de pago").align("left");
+    return b.feed(3).cut().build();
+  }
+
   // ── FACTURA COMPLETA (cliente empresa) ─────────────────────────────────
   // Formato pensado para papel de 80mm. Lleva todo lo que exige el
   // RD 1619/2012: número correlativo de serie, fecha, datos fiscales de

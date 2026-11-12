@@ -32,8 +32,10 @@ for (const [tabla, columna, def] of [
   ["comandas", "descuento_tipo", "TEXT"],
   ["comandas", "descuento_valor", "REAL NOT NULL DEFAULT 0"],
   ["comandas", "descuento_motivo", "TEXT"],
+  ["comandas", "cuenta_impresa_en", "TEXT"],
   ["log_impresion", "es_anulacion", "INTEGER NOT NULL DEFAULT 0"],
   ["log_impresion", "linea_anulada_id", "TEXT"],
+  ["log_impresion", "cuenta_comanda_id", "TEXT REFERENCES comandas(id)"],
 ] as const) {
   const tablaExiste = db
     .prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`)
@@ -84,6 +86,7 @@ interface LogRow {
   ultimo_intento_en: string | null;
   es_anulacion: number;
   linea_anulada_id: string | null;
+  cuenta_comanda_id: string | null;
 }
 
 function eurosDescuento(bruto: number, tipo: string | null, valor: number): number {
@@ -95,6 +98,38 @@ function eurosDescuento(bruto: number, tipo: string | null, valor: number): numb
 }
 
 function construirTicket(log: LogRow, destinoId: string): TicketData | null {
+  if (log.cuenta_comanda_id) {
+    const cab = db.prepare(
+      `SELECT c.creado_en, u.nombre AS camarero, m.nombre AS mesa, c.descuento_tipo,
+              c.descuento_valor
+         FROM comandas c JOIN usuarios u ON u.id = c.camarero_id
+         LEFT JOIN mesas m ON m.id = c.mesa_id WHERE c.id = ?`
+    ).get(log.cuenta_comanda_id) as {
+      creado_en: string; camarero: string; mesa: string | null;
+      descuento_tipo: string | null; descuento_valor: number;
+    } | undefined;
+    if (!cab) return null;
+    const lineas = db.prepare(
+      `SELECT l.id, l.cantidad, p.nombre, l.precio_unitario, l.notas
+         FROM lineas_comanda l JOIN productos p ON p.id = l.producto_id
+        WHERE l.comanda_id = ? AND COALESCE(l.anulada, 0) = 0 ORDER BY l.enviado_en`
+    ).all(log.cuenta_comanda_id) as {
+      id: string; cantidad: number; nombre: string; precio_unitario: number; notas: string | null;
+    }[];
+    const extras = db.prepare(`SELECT nombre, precio FROM linea_extras WHERE linea_id = ?`);
+    const bruto = lineas.reduce((a, l) => a + l.cantidad * l.precio_unitario, 0);
+    const descuento = eurosDescuento(bruto, cab.descuento_tipo, cab.descuento_valor);
+    return {
+      logId: log.id, tipo: "cuenta", mesa: cab.mesa, camarero: cab.camarero,
+      hora: cab.creado_en.slice(11, 16), total: Math.round((bruto - descuento + Number.EPSILON) * 100) / 100,
+      descuento: descuento || undefined,
+      lineas: lineas.map((l) => ({
+        cantidad: l.cantidad, nombre: l.nombre, precio: l.precio_unitario, notas: l.notas,
+        extras: extras.all(l.id) as { nombre: string; precio: number }[],
+      })),
+    };
+  }
+
   // Aviso de anulación: una sola línea, marcada para que cocina retire el plato.
   // Tiene que ir ANTES del ticket de ronda, porque también lleva ronda_id.
   if (log.es_anulacion && log.linea_anulada_id) {
@@ -367,6 +402,9 @@ async function procesarDestino(destinoId: string, logs: LogRow[]) {
 
       if (resultado.ok) {
         db.prepare(`UPDATE log_impresion SET estado = 'ok', ultimo_intento_en = ? WHERE id = ?`).run(ahora, log.id);
+        if (log.cuenta_comanda_id) {
+          db.prepare(`UPDATE comandas SET cuenta_impresa_en = ? WHERE id = ?`).run(ahora, log.cuenta_comanda_id);
+        }
         socketBackend.emit("worker:impresion_ok", {
           restauranteId: RESTAURANTE_ID,
           logId: log.id,
@@ -407,7 +445,7 @@ function cicloCola() {
   const pendientes = db
     .prepare(
       `SELECT id, ronda_id, pago_id, punto_destino_id, intentos, es_copia, ultimo_intento_en,
-              COALESCE(es_anulacion, 0) AS es_anulacion, linea_anulada_id
+              COALESCE(es_anulacion, 0) AS es_anulacion, linea_anulada_id, cuenta_comanda_id
          FROM log_impresion WHERE estado = 'pendiente' ORDER BY creado_en`
     )
     .all() as LogRow[];

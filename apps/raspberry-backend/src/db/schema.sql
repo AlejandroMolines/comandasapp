@@ -234,6 +234,7 @@ CREATE TABLE IF NOT EXISTS comandas (
   estado TEXT NOT NULL DEFAULT 'abierta' CHECK (estado IN ('abierta','en_cocina','servida','cerrada','cancelada')),
   creado_en TEXT NOT NULL,
   cerrado_en TEXT,
+  cuenta_impresa_en TEXT,
   -- Descuento de la cuenta: 'porcentaje' (0-100) o 'importe' (euros).
   -- Se aplica al cobrar sobre las líneas no anuladas.
   descuento_tipo TEXT,
@@ -304,7 +305,8 @@ CREATE TABLE IF NOT EXISTS log_impresion (
   es_copia INTEGER NOT NULL DEFAULT 0,
   -- Aviso a cocina de que hay que retirar un plato ya enviado.
   es_anulacion INTEGER NOT NULL DEFAULT 0,
-  linea_anulada_id TEXT
+  linea_anulada_id TEXT,
+  cuenta_comanda_id TEXT REFERENCES comandas(id)
 );
 
 CREATE TABLE IF NOT EXISTS eventos_sync (

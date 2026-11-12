@@ -84,7 +84,7 @@ comandasRouter.get("/abiertas", requireAuth, (_req, res) => {
       `SELECT c.id, c.mesa_id, c.tipo, c.creado_en, u.nombre AS camarero,
               COALESCE(SUM(CASE WHEN COALESCE(l.anulada, 0) = 0 THEN l.cantidad * l.precio_unitario ELSE 0 END), 0) AS bruto,
               COALESCE(SUM(CASE WHEN COALESCE(l.anulada, 0) = 0 THEN l.cantidad ELSE 0 END), 0) AS unidades,
-              c.descuento_tipo, c.descuento_valor
+              c.descuento_tipo, c.descuento_valor, c.cuenta_impresa_en
          FROM comandas c
          JOIN usuarios u ON u.id = c.camarero_id
          LEFT JOIN lineas_comanda l ON l.comanda_id = c.id
@@ -96,6 +96,7 @@ comandasRouter.get("/abiertas", requireAuth, (_req, res) => {
       bruto: number;
       descuento_tipo: string | null;
       descuento_valor: number;
+      cuenta_impresa_en: string | null;
     }[];
   res.json(
     filas.map((f) => ({
@@ -159,13 +160,13 @@ comandasRouter.post("/:id/mover", requireAuth, (req, res) => {
       // Los pagos parciales que hubiera también viajan con la cuenta.
       db.prepare(`UPDATE pagos SET comanda_id = ? WHERE comanda_id = ?`)
         .run(comandaDestino.id, origen.id);
-      db.prepare(`UPDATE comandas SET estado = 'cancelada', cerrado_en = ? WHERE id = ?`)
+      db.prepare(`UPDATE comandas SET estado = 'cancelada', cerrado_en = ?, cuenta_impresa_en = NULL WHERE id = ?`)
         .run(ahora, origen.id);
       modo = "unida";
       comandaFinalId = comandaDestino.id;
     } else {
       // MOVER: la comanda cambia de mesa.
-      db.prepare(`UPDATE comandas SET mesa_id = ? WHERE id = ?`).run(mesaDestinoId, origen.id);
+      db.prepare(`UPDATE comandas SET mesa_id = ?, cuenta_impresa_en = NULL WHERE id = ?`).run(mesaDestinoId, origen.id);
       modo = "movida";
     }
     // Ocupada solo si de verdad queda algo pedido. Una comanda vacía
@@ -175,6 +176,7 @@ comandasRouter.post("/:id/mover", requireAuth, (req, res) => {
         `SELECT 1 FROM lineas_comanda WHERE comanda_id = ? AND COALESCE(anulada, 0) = 0 LIMIT 1`
       )
       .get(comandaFinalId);
+    db.prepare(`UPDATE comandas SET cuenta_impresa_en = NULL WHERE id = ?`).run(comandaFinalId);
     db.prepare(`UPDATE mesas SET estado = ? WHERE id = ?`).run(quedan ? "ocupada" : "libre", mesaDestinoId);
     // La mesa de origen queda libre en ambos casos.
     if (origen.mesa_id) {
@@ -232,6 +234,37 @@ comandasRouter.get("/:id", requireAuth, (req, res) => {
 
   const cuenta = resumenCuenta(req.params.id);
   res.json({ comanda, lineas: conExtras, ...cuenta });
+});
+
+// Imprime una precuenta sin registrar ningún pago ni emitir factura.
+comandasRouter.post("/:id/imprimir-cuenta", requireAuth, (req, res) => {
+  const parsed = z.object({ impresoraTicketId: z.string() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json(parsed.error.flatten());
+  const comanda = db.prepare(
+    `SELECT id, estado FROM comandas WHERE id = ? AND restaurante_id = ?`
+  ).get(req.params.id, RESTAURANTE_ID) as { id: string; estado: string } | undefined;
+  if (!comanda) return res.status(404).json({ error: "Comanda no encontrada" });
+  if (comanda.estado === "cerrada" || comanda.estado === "cancelada") {
+    return res.status(409).json({ error: `La comanda ya está ${comanda.estado}` });
+  }
+  if (resumenCuenta(comanda.id).total <= 0) {
+    return res.status(400).json({ error: "No se puede imprimir una cuenta vacía" });
+  }
+  const impresora = db.prepare(
+    `SELECT tipo FROM puntos_destino WHERE id = ? AND restaurante_id = ?`
+  ).get(parsed.data.impresoraTicketId, RESTAURANTE_ID) as { tipo: string } | undefined;
+  if (!impresora) return res.status(404).json({ error: "Impresora de ticket no encontrada" });
+  if (impresora.tipo !== "impresora_ticket") {
+    return res.status(400).json({ error: "El destino indicado no es una impresora de ticket" });
+  }
+
+  const logId = uuid();
+  db.prepare(
+    `INSERT INTO log_impresion (id, punto_destino_id, estado, intentos, creado_en, cuenta_comanda_id)
+     VALUES (?, ?, 'pendiente', 0, ?, ?)`
+  ).run(logId, parsed.data.impresoraTicketId, new Date().toISOString(), comanda.id);
+  req.app.get("io")?.to(RESTAURANTE_ID).emit("impresion:cuenta_enviada", { comandaId: comanda.id });
+  res.status(202).json({ logId });
 });
 
 const enviarRondaSchema = z.object({
