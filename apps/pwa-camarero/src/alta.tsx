@@ -36,12 +36,22 @@ export function AltaCamarero() {
   };
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center px-6 py-10">
-      <img src="/logo.png" alt="" className="mb-4 h-16 w-auto" />
-      <h1 className="mb-1 text-2xl">Alta de camarero</h1>
-      <p className="mb-6 text-sm text-muted-foreground">
-        Este móvil quedará registrado en el local. El código del QR caduca en unos minutos.
-      </p>
+    <main className="flex min-h-dvh items-center justify-center bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/10 via-background to-background px-5 py-8">
+      <section className="w-full max-w-sm rounded-2xl border bg-card/95 p-6 shadow-xl shadow-black/20 sm:p-8">
+        <div className="mb-6 flex flex-col items-center text-center">
+          <div className="mb-3 grid size-20 place-items-center rounded-3xl border border-primary/20 bg-[#fff9f1] shadow-sm">
+            <img src="/marca-comandas.svg" alt="" className="size-14" />
+          </div>
+          <span className="mb-4 text-xs font-bold uppercase tracking-[0.22em] text-primary">Comandas</span>
+          <h1 className="mb-2 text-2xl">Alta de camarero</h1>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            Registra este móvil en el restaurante para empezar a recibir y enviar comandas.
+          </p>
+        </div>
+        <div className="mb-5 flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2.5 text-xs text-muted-foreground">
+          <span className="size-2 shrink-0 rounded-full bg-primary" />
+          El QR es temporal y caduca en unos minutos.
+        </div>
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="alta-nombre">Tu nombre</Label>
@@ -60,6 +70,7 @@ export function AltaCamarero() {
           {enviando ? "Registrando…" : "Registrarme"}
         </Button>
       </div>
-    </div>
+      </section>
+    </main>
   );
 }

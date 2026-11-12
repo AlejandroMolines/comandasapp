@@ -2,10 +2,10 @@
 // versión vieja. Clave: el HTML va "red primero" (así siempre coges la build
 // nueva si hay conexión) y los assets con hash en el nombre van "caché
 // primero" (su nombre cambia en cada build, así que nunca sirven algo obsoleto).
-const CACHE = "comandas-shell-v4";
+const CACHE = "comandas-shell-v5";
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["/", "/manifest.webmanifest", "/logo.png", "/icon-192.png"])));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["/", "/manifest.webmanifest", "/logo.png", "/marca-comandas.svg", "/icon-192.png"])));
   self.skipWaiting();
 });
 

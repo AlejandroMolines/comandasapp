@@ -154,6 +154,7 @@ export function crearRonda(
 
   const tx = db.transaction(() => {
     insertRonda.run(rondaId, comandaId, camareroId, ahora);
+    db.prepare(`UPDATE comandas SET cuenta_impresa_en = NULL WHERE id = ?`).run(comandaId);
 
     // La mesa pasa a ocupada al enviarse la PRIMERA ronda, no al abrirla.
     if (comanda?.mesa_id) {
@@ -290,6 +291,7 @@ export function anularLinea(opts: {
   let lineaAnuladaId = linea.id;
 
   const tx = db.transaction(() => {
+    db.prepare(`UPDATE comandas SET cuenta_impresa_en = NULL WHERE id = ?`).run(opts.comandaId);
     if (cantidad === linea.cantidad) {
       db.prepare(
         `UPDATE lineas_comanda
@@ -383,7 +385,8 @@ export function aplicarDescuento(
 
   if (tipo === "ninguno") {
     db.prepare(
-      `UPDATE comandas SET descuento_tipo = NULL, descuento_valor = 0, descuento_motivo = NULL WHERE id = ?`
+      `UPDATE comandas SET descuento_tipo = NULL, descuento_valor = 0, descuento_motivo = NULL,
+              cuenta_impresa_en = NULL WHERE id = ?`
     ).run(comandaId);
     return resumenCuenta(comandaId);
   }
@@ -394,7 +397,8 @@ export function aplicarDescuento(
     throw new ErrorComanda("El descuento dejaría la cuenta por debajo de lo ya cobrado");
   }
   db.prepare(
-    `UPDATE comandas SET descuento_tipo = ?, descuento_valor = ?, descuento_motivo = ? WHERE id = ?`
+    `UPDATE comandas SET descuento_tipo = ?, descuento_valor = ?, descuento_motivo = ?,
+            cuenta_impresa_en = NULL WHERE id = ?`
   ).run(tipo, valor, motivo, comandaId);
   return resumenCuenta(comandaId);
 }

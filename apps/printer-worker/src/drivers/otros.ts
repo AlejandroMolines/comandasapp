@@ -12,6 +12,20 @@ export const escposUsbDriver: DestinoDriver = {
   async enviar(destino: PuntoDestinoRow, ticket: TicketData): Promise<ResultadoEnvio> {
     const ruta = String(destino.config.rutaDispositivo ?? "");
     const b = new EscPosBuilder().init().align("center").sizeBig().bold(true);
+    if (ticket.tipo === "cuenta") {
+      b.line("CUENTA").sizeNormal().bold(false).line("PRECUENTA - NO ES FACTURA");
+      b.line(ticket.mesa ? `MESA ${ticket.mesa}` : "PARA LLEVAR").align("left").separator();
+      for (const l of ticket.lineas) {
+        b.line(`${l.cantidad} x ${l.nombre}  ${((l.precio ?? 0) * l.cantidad).toFixed(2)}`);
+        if (l.notas) b.line(`   >> ${l.notas}`);
+        for (const ex of l.extras ?? []) b.line(ex.precio > 0 ? `   + ${ex.nombre} (${ex.precio.toFixed(2)})` : `   · ${ex.nombre}`);
+      }
+      if ((ticket.descuento ?? 0) > 0) b.line(`Descuento: -${ticket.descuento!.toFixed(2)} EUR`);
+      b.separator().bold(true).line(`TOTAL: ${(ticket.total ?? 0).toFixed(2)} EUR`).bold(false);
+      b.align("center").line("Pendiente de pago").feed(3).cut();
+      try { fs.writeFileSync(ruta, b.build()); return { ok: true }; }
+      catch (err) { return { ok: false, error: `usb: ${(err as Error).message}` }; }
+    }
     if (ticket.anulacion) b.line("*** ANULADO ***");
     b.line(ticket.mesa ? `MESA ${ticket.mesa}` : "PARA LLEVAR");
     if (ticket.motivoAnulacion) b.bold(false).sizeNormal().line(ticket.motivoAnulacion).sizeBig().bold(true);

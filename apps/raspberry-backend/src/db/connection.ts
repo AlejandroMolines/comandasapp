@@ -26,8 +26,10 @@ const columnasNuevas: [string, string, string][] = [
   ["comandas", "descuento_tipo", "TEXT"],
   ["comandas", "descuento_valor", "REAL NOT NULL DEFAULT 0"],
   ["comandas", "descuento_motivo", "TEXT"],
+  ["comandas", "cuenta_impresa_en", "TEXT"],
   ["log_impresion", "es_anulacion", "INTEGER NOT NULL DEFAULT 0"],
   ["log_impresion", "linea_anulada_id", "TEXT"],
+  ["log_impresion", "cuenta_comanda_id", "TEXT REFERENCES comandas(id)"],
 ];
 for (const [tabla, columna, def] of columnasNuevas) {
   const info = db.prepare(`PRAGMA table_info(${tabla})`).all() as { name: string }[];

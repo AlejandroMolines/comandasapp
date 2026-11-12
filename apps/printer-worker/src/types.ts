@@ -1,7 +1,7 @@
 /** Datos ya resueltos de un ticket listo para entregar a un destino. */
 export interface TicketData {
   logId: string;
-  tipo: "comanda" | "pago";
+  tipo: "comanda" | "pago" | "cuenta";
   /**
    * Reimpresión. Legalmente no se puede emitir dos veces el mismo número de
    * factura como original, así que el papel sale marcado como COPIA.
