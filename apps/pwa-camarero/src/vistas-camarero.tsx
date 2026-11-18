@@ -1,6 +1,6 @@
 import {
   ArrowLeft, ArrowRightLeft, Banknote, ChevronDown, ChevronLeft, ChevronRight, ClipboardList,
-  CreditCard, FileText, Folder, Minus, Plus, Printer, Receipt, Save, Search, Send, ShoppingBag, Timer, X,
+  CreditCard, FileText, Folder, Minus, Plus, Printer, Receipt, Save, Search, Send, ShoppingBag, SlidersHorizontal, Timer, X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, getUsuario } from "./api";
@@ -267,6 +267,28 @@ export function Comanda({
   const [busqueda, setBusqueda] = useState("");
   const [lineas, setLineas] = useState<Linea[]>([]);
   const [notaPara, setNotaPara] = useState<{ productoId: string; nombre: string; precio: number } | null>(null);
+  const usuarioId = getUsuario()?.id ?? "anonimo";
+  const clavePreferencias = `preferencias-camarero:${usuarioId}`;
+  const [preferencias, setPreferencias] = useState(() => {
+    try {
+      const guardadas = JSON.parse(localStorage.getItem(clavePreferencias) ?? "{}");
+      return {
+        vista: guardadas.vista === "cajas" ? "cajas" as const : "lista" as const,
+        tamano: ["normal", "grande", "muy-grande"].includes(guardadas.tamano) ? guardadas.tamano as "normal" | "grande" | "muy-grande" : "grande" as const,
+      };
+    } catch { return { vista: "lista" as const, tamano: "grande" as const }; }
+  });
+  const [personalizando, setPersonalizando] = useState(false);
+  const [observacionesComunes, setObservacionesComunes] = useState<string[]>(() => {
+    try {
+      const guardadas = JSON.parse(localStorage.getItem(`observaciones-camarero:${usuarioId}`) ?? "{}");
+      return Object.entries(guardadas as Record<string, number>)
+        .filter(([, veces]) => veces >= 2)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 12)
+        .map(([texto]) => texto);
+    } catch { return []; }
+  });
 
   const [previas, setPrevias] = useState<LineaPrevia[]>([]);
   const [totalPrevio, setTotalPrevio] = useState(0);
@@ -338,9 +360,22 @@ export function Comanda({
     cantidad: number
   ) => {
     if (!notaPara) return;
+    const limpia = nota.trim().replace(/\s+/g, " ");
+    if (limpia) {
+      try {
+        const key = `observaciones-camarero:${usuarioId}`;
+        const conteos = JSON.parse(localStorage.getItem(key) ?? "{}") as Record<string, number>;
+        const previa = Object.keys(conteos).find((x) => x.toLocaleLowerCase("es") === limpia.toLocaleLowerCase("es"));
+        const texto = previa ?? limpia;
+        conteos[texto] = (conteos[texto] ?? 0) + 1;
+        localStorage.setItem(key, JSON.stringify(conteos));
+        setObservacionesComunes(Object.entries(conteos).filter(([, veces]) => veces >= 2)
+          .sort((a, b) => b[1] - a[1]).slice(0, 12).map(([x]) => x));
+      } catch { /* El pedido funciona aunque el navegador no permita guardar sugerencias. */ }
+    }
     setLineas((ls) => [...ls, {
       productoId: notaPara.productoId, nombre: notaPara.nombre, precio: notaPara.precio,
-      cantidad, notas: nota || undefined, extras: extras.length ? extras : undefined,
+      cantidad, notas: limpia || undefined, extras: extras.length ? extras : undefined,
     }]);
     setNotaPara(null);
   };
@@ -351,29 +386,53 @@ export function Comanda({
 
   const total = lineas.reduce((a, l) => a + precioLinea(l), 0);
   const unidades = lineas.reduce((a, l) => a + l.cantidad, 0);
+  const actualizarPreferencias = (nuevas: typeof preferencias) => {
+    setPreferencias(nuevas);
+    try { localStorage.setItem(clavePreferencias, JSON.stringify(nuevas)); } catch { /* Preferencias locales opcionales. */ }
+  };
 
   /** Tarjeta de producto con contador y acceso a comentarios. */
   const FilaProducto = ({ p }: { p: CartaCompleta["productos"][0] }) => {
     const n = cantidadDe(p.id);
+    const grande = preferencias.tamano !== "normal";
+    const alto = preferencias.tamano === "muy-grande";
+    if (preferencias.vista === "cajas") return (
+      <div className={cn("flex min-h-36 flex-col rounded-xl border bg-card p-3", alto && "min-h-48 p-4", n > 0 && "border-primary/50 bg-primary/5", !p.disponible && "opacity-40")}>
+        <button className="flex flex-1 flex-col items-start text-left" disabled={!p.disponible}
+          onClick={() => setNotaPara({ productoId: p.id, nombre: p.nombre, precio: p.precio })}>
+          <span className={cn("line-clamp-2 w-full font-semibold", grande ? "text-base" : "text-sm")}>{p.nombre}</span>
+          <span className="mt-1 font-mono text-sm text-muted-foreground">{p.disponible ? eur(p.precio) : "Agotado"}</span>
+        </button>
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <Button variant="secondary" size={grande ? "default" : "icon-sm"} className={alto ? "h-12 min-w-12" : ""} disabled={!p.disponible || n === 0}
+            onClick={() => sumar(p, -1)} aria-label={`Quitar ${p.nombre}`}><Minus /></Button>
+          <span className={cn("min-w-7 text-center font-mono font-bold", grande ? "text-lg" : "text-sm", n === 0 && "text-muted-foreground/40")}>{n}</span>
+          <Button size={grande ? "default" : "icon-sm"} className={alto ? "h-12 min-w-12" : ""} disabled={!p.disponible || n >= 99}
+            onClick={() => sumar(p, 1)} aria-label={`Añadir ${p.nombre}`}><Plus /></Button>
+        </div>
+      </div>
+    );
     return (
       <div className={cn(
-        "flex items-center gap-2 rounded-lg border bg-card p-2.5",
+        "flex items-center gap-2 rounded-lg border bg-card",
+        grande ? "p-3" : "p-2.5",
+        alto && "gap-3 py-4",
         n > 0 && "border-primary/50 bg-primary/5",
         !p.disponible && "opacity-40"
       )}>
         {/* Tocar el nombre abre comentarios/agregados */}
         <button className="min-w-0 flex-1 text-left" disabled={!p.disponible}
           onClick={() => setNotaPara({ productoId: p.id, nombre: p.nombre, precio: p.precio })}>
-          <span className="block truncate text-sm font-semibold">{p.nombre}</span>
+          <span className={cn("block truncate font-semibold", grande ? "text-base" : "text-sm")}>{p.nombre}</span>
           <span className="font-mono text-xs text-muted-foreground">
             {p.disponible ? eur(p.precio) : "Agotado"}
             {p.disponible && <span className="ml-1.5 not-italic opacity-70">· toca para nota</span>}
           </span>
         </button>
-        <Button variant="secondary" size="icon-sm" disabled={!p.disponible || n === 0}
+        <Button variant="secondary" size={grande ? "default" : "icon-sm"} className={alto ? "h-12 min-w-12" : ""} disabled={!p.disponible || n === 0}
           onClick={() => sumar(p, -1)} aria-label={`Quitar ${p.nombre}`}><Minus /></Button>
         <span className={cn("w-7 text-center font-mono text-sm font-bold", n === 0 && "text-muted-foreground/40")}>{n}</span>
-        <Button size="icon-sm" disabled={!p.disponible || n >= 99}
+        <Button size={grande ? "default" : "icon-sm"} className={alto ? "h-12 min-w-12" : ""} disabled={!p.disponible || n >= 99}
           onClick={() => sumar(p, 1)} aria-label={`Añadir ${p.nombre}`}><Plus /></Button>
       </div>
     );
@@ -387,6 +446,9 @@ export function Comanda({
           <ArrowLeft className="!size-5" />
         </Button>
         <h2 className="flex-1 text-lg">{titulo}</h2>
+        <Button variant="ghost" size="icon" title="Personalizar botones de productos" aria-label="Personalizar botones de productos" onClick={() => setPersonalizando(true)}>
+          <SlidersHorizontal className="!size-[18px]" />
+        </Button>
         {mesaActualId && (
           <Button variant="ghost" size="icon" title="Mover de mesa" onClick={() => setMoviendo(true)}>
             <ArrowRightLeft className="!size-[18px]" />
@@ -401,6 +463,31 @@ export function Comanda({
           onCerrar={() => setMoviendo(false)}
           onHecho={(msg) => { setMoviendo(false); onMovida(msg); }}
         />
+      )}
+      {personalizando && (
+        <Dialog open onOpenChange={(o) => !o && setPersonalizando(false)} title="Personalizar vista móvil">
+          <div className="flex flex-col gap-4">
+            <div>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Presentación de productos</p>
+              <div className="grid grid-cols-2 gap-2">
+                {([{ id: "lista", nombre: "Lista" }, { id: "cajas", nombre: "Cajas" }] as const).map((opcion) => (
+                  <Button key={opcion.id} variant={preferencias.vista === opcion.id ? "default" : "secondary"}
+                    onClick={() => actualizarPreferencias({ ...preferencias, vista: opcion.id })}>{opcion.nombre}</Button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Tamaño de botones</p>
+              <div className="grid grid-cols-3 gap-2">
+                {([{ id: "normal", nombre: "Normal" }, { id: "grande", nombre: "Grande" }, { id: "muy-grande", nombre: "Muy grande" }] as const).map((opcion) => (
+                  <Button key={opcion.id} variant={preferencias.tamano === opcion.id ? "default" : "secondary"}
+                    className="px-2 text-xs" onClick={() => actualizarPreferencias({ ...preferencias, tamano: opcion.id })}>{opcion.nombre}</Button>
+                ))}
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">La vista y el tamaño se guardan para {getUsuario()?.nombre ?? "este camarero"} en este móvil.</p>
+          </div>
+        </Dialog>
       )}
 
       {modo === "resumen" ? (
@@ -494,9 +581,9 @@ export function Comanda({
         {resultados ? (
           resultados.length === 0
             ? <p className="py-8 text-center text-sm text-muted-foreground">Ningún producto coincide con «{busqueda}»</p>
-            : <div className="flex flex-col gap-2">{resultados.map((p) => <FilaProducto key={p.id} p={p} />)}</div>
+            : <div className={cn("gap-2", preferencias.vista === "cajas" ? "grid grid-cols-2" : "flex flex-col")}>{resultados.map((p) => <FilaProducto key={p.id} p={p} />)}</div>
         ) : (
-          <div className="flex flex-col gap-2">
+          <div className={cn("gap-2", preferencias.vista === "cajas" ? "grid grid-cols-2" : "flex flex-col")}>
             {/* Grupos del nivel actual */}
             {subcategorias.map((c) => {
               const nHijas = carta.categorias.filter((x) => x.categoria_padre_id === c.id).length;
@@ -584,7 +671,7 @@ export function Comanda({
       )}
 
       {notaPara && (
-        <DialogoExtras producto={notaPara} onCerrar={() => setNotaPara(null)} onOk={añadirConExtras} />
+        <DialogoExtras producto={notaPara} observacionesComunes={observacionesComunes} onCerrar={() => setNotaPara(null)} onOk={añadirConExtras} />
       )}
       {anularDe && (
         <DialogoAnular
@@ -673,8 +760,9 @@ function DialogoAnular({ comandaId, linea, onCerrar, onHecha }: {
  * son modificaciones ("sin cebolla") y los de precio > 0 suman a la cuenta
  * ("extra de queso +1,50"). Todos se imprimen para cocina.
  */
-function DialogoExtras({ producto, onOk, onCerrar }: {
+function DialogoExtras({ producto, observacionesComunes, onOk, onCerrar }: {
   producto: { productoId: string; nombre: string; precio: number };
+  observacionesComunes: string[];
   onOk: (
     extras: { id: string; nombre: string; precio: number }[],
     nota: string,
@@ -760,6 +848,24 @@ function DialogoExtras({ producto, onOk, onCerrar }: {
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Comentario libre para cocina
           </p>
+          {observacionesComunes.length > 0 && (
+            <div className="rounded-lg border bg-muted/40 p-2.5">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Observaciones comunes</p>
+              <div className="flex flex-wrap gap-1.5">
+                {observacionesComunes.map((observacion) => (
+                  <button key={observacion} type="button" onClick={() => setTexto((actual) => {
+                    const partes = actual.split(",").map((x) => x.trim()).filter(Boolean);
+                    return partes.some((x) => x.toLocaleLowerCase("es") === observacion.toLocaleLowerCase("es"))
+                      ? actual
+                      : [...partes, observacion].join(", ");
+                  })}
+                    className="min-h-10 rounded-full border border-primary/30 bg-background px-3 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/10">
+                    {observacion}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <Input placeholder="Ej: que salga con el segundo" value={texto}
             onChange={(e) => setTexto(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && onOk(elegidos, texto, cantidad)} />
