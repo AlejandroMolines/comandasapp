@@ -97,6 +97,35 @@ function eurosDescuento(bruto: number, tipo: string | null, valor: number): numb
   return 0;
 }
 
+/** En los tickets de cliente se agrupan productos iguales al mismo precio.
+ * Las notas y los extras gratuitos son instrucciones de cocina, no conceptos
+ * de venta; solo se muestran y diferencian los extras con coste. */
+function agruparLineasTicket(lineas: TicketData["lineas"]): TicketData["lineas"] {
+  const grupos = new Map<string, TicketData["lineas"][number]>();
+  for (const linea of lineas) {
+    const extras = (linea.extras ?? [])
+      .filter((extra) => extra.precio > 0)
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, "es") || a.precio - b.precio);
+    const precio = Math.round(((linea.precio ?? 0) + Number.EPSILON) * 100) / 100;
+    const clave = JSON.stringify([
+      linea.nombre,
+      precio,
+      linea.tipoIva ?? null,
+      extras.map((extra) => [extra.nombre, extra.precio]),
+    ]);
+    const existente = grupos.get(clave);
+    if (existente) existente.cantidad += linea.cantidad;
+    else grupos.set(clave, {
+      ...linea,
+      cantidad: linea.cantidad,
+      precio,
+      notas: null,
+      extras: extras.length ? extras : undefined,
+    });
+  }
+  return [...grupos.values()];
+}
+
 function construirTicket(log: LogRow, destinoId: string): TicketData | null {
   if (log.cuenta_comanda_id) {
     const cab = db.prepare(
@@ -123,10 +152,10 @@ function construirTicket(log: LogRow, destinoId: string): TicketData | null {
       logId: log.id, tipo: "cuenta", mesa: cab.mesa, camarero: cab.camarero,
       hora: cab.creado_en.slice(11, 16), total: Math.round((bruto - descuento + Number.EPSILON) * 100) / 100,
       descuento: descuento || undefined,
-      lineas: lineas.map((l) => ({
-        cantidad: l.cantidad, nombre: l.nombre, precio: l.precio_unitario, notas: l.notas,
+      lineas: agruparLineasTicket(lineas.map((l) => ({
+        cantidad: l.cantidad, nombre: l.nombre, precio: l.precio_unitario, notas: null,
         extras: extras.all(l.id) as { nombre: string; precio: number }[],
-      })),
+      }))),
     };
   }
 
@@ -312,10 +341,10 @@ function construirTicket(log: LogRow, destinoId: string): TicketData | null {
       mesa: cab.mesa,
       camarero: cab.camarero,
       hora: cab.creado_en.slice(11, 16),
-      lineas: lineas.map((l) => ({
+      lineas: agruparLineasTicket(lineas.map((l) => ({
         cantidad: l.cantidad, nombre: l.nombre, notas: null,
         precio: l.precio_unitario, tipoIva: l.tipo_iva, extras: extrasDe(l.id),
-      })),
+      }))),
       total: Number(totalCuenta.toFixed(2)),
       descuento: descuento > 0 ? descuento : undefined,
       metodo: cab.metodo,
