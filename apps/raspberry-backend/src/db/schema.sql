@@ -285,6 +285,15 @@ CREATE TABLE IF NOT EXISTS pagos (
   ejercicio_simpl INTEGER
 );
 
+-- Un pago por productos registra las unidades concretas que liquidó. Así el
+-- siguiente pago por productos solo puede seleccionar unidades aún pendientes.
+CREATE TABLE IF NOT EXISTS pago_lineas (
+  pago_id TEXT NOT NULL REFERENCES pagos(id) ON DELETE CASCADE,
+  linea_id TEXT NOT NULL REFERENCES lineas_comanda(id),
+  cantidad INTEGER NOT NULL CHECK (cantidad > 0),
+  PRIMARY KEY (pago_id, linea_id)
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_pagos_simpl
   ON pagos(serie_simpl, ejercicio_simpl, numero_simpl)
   WHERE numero_simpl IS NOT NULL;

@@ -321,6 +321,15 @@ function construirTicket(log: LogRow, destinoId: string): TicketData | null {
       | { serie_simpl: string | null; numero_simpl: number | null; ejercicio_simpl: number | null }
       | undefined;
 
+    const metodosPago = db.prepare(
+      `SELECT metodo, SUM(importe) AS importe
+         FROM pagos WHERE comanda_id = (SELECT comanda_id FROM pagos WHERE id = ?)
+        GROUP BY metodo ORDER BY metodo`
+    ).all(log.pago_id) as { metodo: string; importe: number }[];
+    const metodoResumen = metodosPago.length > 1
+      ? metodosPago.map((p) => `${p.metodo.toUpperCase()} ${p.importe.toFixed(2)} EUR`).join(" + ")
+      : cab.metodo;
+
     // Desglose de IVA agrupado por tipo, calculado desde precios CON IVA.
     const porTipo = new Map<number, number>();
     for (const l of lineas) {
@@ -347,7 +356,7 @@ function construirTicket(log: LogRow, destinoId: string): TicketData | null {
       }))),
       total: Number(totalCuenta.toFixed(2)),
       descuento: descuento > 0 ? descuento : undefined,
-      metodo: cab.metodo,
+      metodo: metodoResumen,
       esCopia: log.es_copia === 1,
       simplificada: pagoRow?.numero_simpl
         ? {
