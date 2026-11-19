@@ -903,8 +903,9 @@ export function Cobro({ comandaId, titulo, onCerrado, onVolver }: {
   const [cuenta, setCuenta] = useState<{
     total: number; pagado: number; pendiente: number;
     bruto?: number; descuento?: number; descuentoMotivo?: string | null;
+    productosPagados?: { lineaId: string; cantidad: number }[];
   } | null>(null);
-  const [lineas, setLineas] = useState<{ cantidad: number; nombre: string; precio_unitario: number; notas: string | null; tipo_iva?: number; anulada?: number; extras?: { nombre: string; precio: number }[] }[]>([]);
+  const [lineas, setLineas] = useState<{ id: string; cantidad: number; nombre: string; precio_unitario: number; notas: string | null; tipo_iva?: number; anulada?: number; extras?: { nombre: string; precio: number }[] }[]>([]);
   const [fiscal, setFiscal] = useState<{ razonSocial: string; nif: string; direccion: string }>({ razonSocial: "", nif: "", direccion: "" });
   const [abierta, setAbierta] = useState<string | null>(null);
   const [cuentaImpresaEn, setCuentaImpresaEn] = useState<string | null>(null);
@@ -923,6 +924,9 @@ export function Cobro({ comandaId, titulo, onCerrado, onVolver }: {
   const [dtoMotivo, setDtoMotivo] = useState("");
   const [dtoAbierto, setDtoAbierto] = useState(false);
   const [cobroAbierto, setCobroAbierto] = useState(false);
+  const [modoCobro, setModoCobro] = useState<"importe" | "productos">("importe");
+  const [importeParte, setImporteParte] = useState("");
+  const [seleccionProductos, setSeleccionProductos] = useState<Record<string, number>>({});
   const [importeRecibido, setImporteRecibido] = useState("");
   const [imprimirPago, setImprimirPago] = useState(false);
   const [imprimiendoCuenta, setImprimiendoCuenta] = useState(false);
@@ -961,6 +965,26 @@ export function Cobro({ comandaId, titulo, onCerrado, onVolver }: {
 
   const [cobrando, setCobrando] = useState(false);
 
+  const calcularImporteProductos = (seleccion: Record<string, number>) => {
+    if (!cuenta) return 0;
+    const pagadas = new Map((cuenta.productosPagados ?? []).map((p) => [p.lineaId, p.cantidad]));
+    const activas = lineas.filter((l) => !l.anulada);
+    const unidadesDisponibles = activas.reduce((a, l) => a + Math.max(0, l.cantidad - (pagadas.get(l.id) ?? 0)), 0);
+    const unidadesElegidas = activas.reduce((a, l) => a + (seleccion[l.id] ?? 0), 0);
+    if (!unidadesElegidas) return 0;
+    if (unidadesElegidas === unidadesDisponibles) return cuenta.pendiente;
+    const brutoSeleccionado = activas.reduce((a, l) => a + (seleccion[l.id] ?? 0) * l.precio_unitario, 0);
+    const factor = cuenta.bruto && cuenta.bruto > 0 ? cuenta.total / cuenta.bruto : 0;
+    return Math.round((brutoSeleccionado * factor + Number.EPSILON) * 100) / 100;
+  };
+
+  const importeARegistrar = modoCobro === "productos"
+    ? calcularImporteProductos(seleccionProductos)
+    : Number(importeParte.replace(",", "."));
+  const dineroEntregado = Number(importeRecibido.replace(",", "."));
+  const cambio = metodo === "efectivo" ? Math.max(0, dineroEntregado - importeARegistrar) : 0;
+  const faltaRecibir = metodo === "efectivo" ? Math.max(0, importeARegistrar - dineroEntregado) : 0;
+
   const aplicarDescuento = async () => {
     const valor = Number(dtoValor.replace(",", "."));
     if (!Number.isFinite(valor) || valor <= 0) return avisar("Escribe un descuento válido", true);
@@ -988,6 +1012,10 @@ export function Cobro({ comandaId, titulo, onCerrado, onVolver }: {
 
   const cobrar = async () => {
     if (!cuenta || cobrando) return;
+    setImprimirPago(false);
+    setModoCobro("importe");
+    setImporteParte(cuenta.pendiente.toFixed(2));
+    setSeleccionProductos({});
     setImporteRecibido(cuenta.pendiente.toFixed(2));
     setCobroAbierto(true);
   };
@@ -1009,9 +1037,18 @@ export function Cobro({ comandaId, titulo, onCerrado, onVolver }: {
 
   const confirmarCobro = async () => {
     if (!cuenta || cobrando) return;
-    const recibido = Number(importeRecibido.replace(",", "."));
+    const recibido = importeARegistrar;
     if (cuenta.pendiente > 0.01 && (!Number.isFinite(recibido) || recibido <= 0)) {
-      return avisar("Indica cuánto ha entregado el cliente", true);
+      return avisar(modoCobro === "productos" ? "Selecciona los productos que va a pagar" : "Indica cuánto paga esta persona", true);
+    }
+    if (recibido > cuenta.pendiente + 0.01) {
+      return avisar("Ese importe supera lo que queda pendiente", true);
+    }
+    if (metodo === "efectivo" && (!Number.isFinite(dineroEntregado) || faltaRecibir > 0.009)) {
+      return avisar("El dinero entregado no cubre el importe que paga", true);
+    }
+    if (empresaId && recibido + cuenta.pagado < cuenta.total - 0.01) {
+      return avisar("Para emitir factura de empresa hay que cobrar toda la cuenta en un solo pago", true);
     }
     setCobrando(true);
     try {
@@ -1023,7 +1060,10 @@ export function Cobro({ comandaId, titulo, onCerrado, onVolver }: {
       const r = await api<{ comandaCerrada: boolean }>(`/comandas/${comandaId}/pagos`, {
         method: "POST",
         body: {
-          metodo, importe: Math.min(recibido, cuenta.pendiente),
+          metodo,
+          ...(modoCobro === "productos"
+            ? { lineas: Object.entries(seleccionProductos).filter(([, cantidad]) => cantidad > 0).map(([lineaId, cantidad]) => ({ lineaId, cantidad })) }
+            : { importe: recibido }),
           impresoraTicketId: imprimirPago ? cajaId : null, empresaId,
         },
       });
@@ -1040,8 +1080,13 @@ export function Cobro({ comandaId, titulo, onCerrado, onVolver }: {
     }
   };
 
-  const recibidoNum = Number(importeRecibido.replace(",", "."));
-  const cambio = cuenta ? Math.max(0, recibidoNum - cuenta.pendiente) : 0;
+  const actualizarSeleccionProductos = (lineaId: string, cantidad: number) => {
+    const nueva = { ...seleccionProductos };
+    if (cantidad > 0) nueva[lineaId] = cantidad;
+    else delete nueva[lineaId];
+    setSeleccionProductos(nueva);
+    setImporteRecibido(calcularImporteProductos(nueva).toFixed(2));
+  };
 
   return (
     <div>
@@ -1296,26 +1341,83 @@ export function Cobro({ comandaId, titulo, onCerrado, onVolver }: {
               <span className="block text-xs uppercase tracking-wide text-muted-foreground">Pendiente de la cuenta</span>
               <b className="font-mono text-2xl">{eur(cuenta.pendiente)}</b>
             </div>
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="importe-recibido" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                {metodo === "efectivo" ? "Dinero entregado" : "Importe indicado por el cliente"} (€)
-              </label>
-              <Input id="importe-recibido" autoFocus inputMode="decimal" className="font-mono text-lg"
-                value={importeRecibido} onChange={(e) => setImporteRecibido(e.target.value)} />
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant={modoCobro === "importe" ? "default" : "secondary"} onClick={() => {
+                setModoCobro("importe");
+                setImporteParte(cuenta.pendiente.toFixed(2));
+                setImporteRecibido(cuenta.pendiente.toFixed(2));
+              }}>Por importe</Button>
+              <Button variant={modoCobro === "productos" ? "default" : "secondary"}
+                disabled={!lineas.some((l) => !l.anulada && l.cantidad > ((cuenta.productosPagados ?? []).find((p) => p.lineaId === l.id)?.cantidad ?? 0))}
+                onClick={() => {
+                  setModoCobro("productos");
+                  setSeleccionProductos({});
+                  setImporteRecibido("0.00");
+                }}>Por productos</Button>
             </div>
-            <div className={cn("flex items-center justify-between rounded-lg border px-3 py-3", cambio > 0 && "border-success/50 bg-success/10")}>
-              <span className="text-sm">{metodo === "efectivo" ? "Cambio" : "Diferencia sobre la cuenta"}</span>
-              <b className="font-mono text-lg">{eur(cambio)}</b>
-            </div>
-            {cajas.length > 0 && (
+            {modoCobro === "productos" ? (
+              <div className="flex flex-col gap-2">
+                <p className="text-xs text-muted-foreground">Selecciona las unidades que paga esta persona. Los extras se incluyen en el precio.</p>
+                <div className="max-h-60 overflow-y-auto rounded-lg border">
+                  {lineas.filter((l) => !l.anulada).map((l) => {
+                    const yaPagadas = (cuenta.productosPagados ?? []).find((p) => p.lineaId === l.id)?.cantidad ?? 0;
+                    const disponibles = Math.max(0, l.cantidad - yaPagadas);
+                    if (disponibles === 0) return null;
+                    const elegidas = seleccionProductos[l.id] ?? 0;
+                    return (
+                      <div key={l.id} className="flex items-center gap-2 border-b px-3 py-2.5 last:border-b-0">
+                        <span className="min-w-0 flex-1 text-sm">
+                          <b className="block truncate">{l.nombre}</b>
+                          <span className="font-mono text-xs text-muted-foreground">{eur(l.precio_unitario)} / ud · quedan {disponibles}</span>
+                          {(l.extras ?? []).filter((ex) => ex.precio > 0).map((ex, i) => (
+                            <span key={i} className="block truncate text-xs text-primary">+ {ex.nombre}</span>
+                          ))}
+                        </span>
+                        <Button variant="secondary" size="icon-sm" disabled={elegidas <= 0}
+                          onClick={() => actualizarSeleccionProductos(l.id, elegidas - 1)} aria-label={`Quitar una unidad de ${l.nombre}`}><Minus /></Button>
+                        <span className="w-7 text-center font-mono font-bold">{elegidas}</span>
+                        <Button size="icon-sm" disabled={elegidas >= disponibles}
+                          onClick={() => actualizarSeleccionProductos(l.id, elegidas + 1)} aria-label={`Añadir una unidad de ${l.nombre}`}><Plus /></Button>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex justify-between rounded-lg border bg-card px-3 py-2 text-sm">
+                  <span>Importe de los productos</span><b className="font-mono">{eur(importeARegistrar)}</b>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="importe-parte" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Importe que paga esta persona (€)</label>
+                <Input id="importe-parte" autoFocus inputMode="decimal" className="font-mono text-lg"
+                  value={importeParte} onChange={(e) => setImporteParte(e.target.value)} />
+              </div>
+            )}
+            {metodo === "efectivo" && (
+              <>
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="importe-recibido" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Dinero entregado (€)</label>
+                  <Input id="importe-recibido" inputMode="decimal" className="font-mono text-lg"
+                    value={importeRecibido} onChange={(e) => setImporteRecibido(e.target.value)} />
+                </div>
+                <div className={cn("flex items-center justify-between rounded-lg border px-3 py-3", cambio > 0 && "border-success/50 bg-success/10", faltaRecibir > 0.009 && "border-warning/50 bg-warning/10")}>
+                  <span className="text-sm">{faltaRecibir > 0.009 ? "Falta por entregar" : "Cambio"}</span>
+                  <b className="font-mono text-lg">{eur(faltaRecibir > 0.009 ? faltaRecibir : cambio)}</b>
+                </div>
+              </>
+            )}
+            {cajas.length > 0 && importeARegistrar >= cuenta.pendiente - 0.01 && (
               <Button variant={imprimirPago ? "default" : "outline"} onClick={() => setImprimirPago((v) => !v)}>
                 <Printer /> {imprimirPago ? "Se imprimirá el ticket de pago" : "Cobrar sin imprimir ticket"}
               </Button>
             )}
+            {cajas.length > 0 && importeARegistrar < cuenta.pendiente - 0.01 && (
+              <p className="text-xs text-muted-foreground">El ticket de pago se imprime al liquidar la cuenta. Puedes imprimir la cuenta ahora.</p>
+            )}
             <div className="flex gap-2">
               <Button variant="ghost" className="flex-1" onClick={() => setCobroAbierto(false)} disabled={cobrando}>Cancelar</Button>
-              <Button className="flex-1" onClick={() => void confirmarCobro()} disabled={cobrando || (imprimirPago && !cajaId)}>
-                {cobrando ? "Registrando…" : `Confirmar ${eur(Math.min(Number.isFinite(recibidoNum) ? recibidoNum : 0, cuenta.pendiente))}`}
+              <Button className="flex-1" onClick={() => void confirmarCobro()} disabled={cobrando || (imprimirPago && !cajaId) || (modoCobro === "productos" && importeARegistrar > cuenta.pendiente + 0.01)}>
+                {cobrando ? "Registrando…" : `Confirmar ${eur(importeARegistrar)}`}
               </Button>
             </div>
           </div>

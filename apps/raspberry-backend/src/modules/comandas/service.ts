@@ -280,6 +280,15 @@ export function anularLinea(opts: {
     throw new ErrorComanda("Cantidad a anular no válida");
   }
 
+  const unidadesPagadas = db.prepare(
+    `SELECT COALESCE(SUM(pl.cantidad), 0) AS cantidad
+       FROM pago_lineas pl JOIN pagos p ON p.id = pl.pago_id
+      WHERE p.comanda_id = ? AND pl.linea_id = ?`
+  ).get(opts.comandaId, linea.id) as { cantidad: number };
+  if (linea.cantidad - cantidad < unidadesPagadas.cantidad) {
+    throw new ErrorComanda("No se puede anular una unidad que ya se cobró por producto");
+  }
+
   const cuenta = resumenCuenta(opts.comandaId);
   const nuevoBruto = r2(cuenta.bruto - cantidad * linea.precio_unitario);
   const nuevoTotal = r2(Math.max(0, nuevoBruto - importeDescuento(nuevoBruto, cuenta.descuentoTipo, cuenta.descuentoValor)));

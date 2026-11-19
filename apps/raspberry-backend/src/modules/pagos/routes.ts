@@ -32,12 +32,26 @@ pagosRouter.get("/comandas/:comandaId/cuenta", requireAuth, (req, res) => {
     .get(req.params.comandaId, RESTAURANTE_ID) as { id: string; estado: string } | undefined;
   if (!comanda) return res.status(404).json({ error: "Comanda no encontrada" });
 
-  res.json({ comandaId: comanda.id, ...resumenCuenta(comanda.id) });
+  const productosPagados = db.prepare(
+    `SELECT pl.linea_id, SUM(pl.cantidad) AS cantidad
+       FROM pago_lineas pl JOIN pagos p ON p.id = pl.pago_id
+      WHERE p.comanda_id = ? GROUP BY pl.linea_id`
+  ).all(comanda.id) as { linea_id: string; cantidad: number }[];
+
+  res.json({
+    comandaId: comanda.id,
+    ...resumenCuenta(comanda.id),
+    productosPagados: productosPagados.map(({ linea_id, cantidad }) => ({ lineaId: linea_id, cantidad })),
+  });
 });
 
 const pagoSchema = z.object({
   metodo: z.enum(["efectivo", "tarjeta", "otro"]),
-  importe: z.number().positive(),
+  importe: z.number().positive().optional(),
+  lineas: z.array(z.object({
+    lineaId: z.string().min(1),
+    cantidad: z.number().int().positive(),
+  })).min(1).optional(),
   propina: z.number().nonnegative().default(0),
   // Qué caja imprime el ticket. Opcional: un pago parcial intermedio
   // puede registrarse sin imprimir nada.
@@ -45,12 +59,14 @@ const pagoSchema = z.object({
   // Si viene una empresa, en vez de (o además de) el ticket simplificado se
   // emite una FACTURA COMPLETA a su nombre, con desglose de IVA.
   empresaId: z.string().nullable().optional().default(null),
+}).refine((datos) => datos.importe !== undefined || datos.lineas !== undefined, {
+  message: "Indica un importe o los productos que se van a pagar",
 });
 
 pagosRouter.post("/comandas/:comandaId/pagos", requireAuth, (req, res) => {
   const parsed = pagoSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json(parsed.error.flatten());
-  const { metodo, importe, propina, impresoraTicketId, empresaId } = parsed.data;
+  const { metodo, propina, impresoraTicketId, empresaId, lineas: lineasPago } = parsed.data;
 
   const comanda = db
     .prepare(`SELECT id, estado, mesa_id FROM comandas WHERE id = ? AND restaurante_id = ?`)
@@ -66,12 +82,73 @@ pagosRouter.post("/comandas/:comandaId/pagos", requireAuth, (req, res) => {
   const { total, pagado } = cuenta;
   const pendiente = cuenta.pendiente;
 
+  let importe = parsed.data.importe ?? 0;
+  if (lineasPago) {
+    if (new Set(lineasPago.map((l) => l.lineaId)).size !== lineasPago.length) {
+      return res.status(400).json({ error: "No repitas una misma línea de producto" });
+    }
+
+    const disponibles = db.prepare(
+      `SELECT l.cantidad, l.precio_unitario
+         FROM lineas_comanda l
+        WHERE l.id = ? AND l.comanda_id = ? AND COALESCE(l.anulada, 0) = 0`
+    );
+    const cantidadPagada = db.prepare(
+      `SELECT COALESCE(SUM(pl.cantidad), 0) AS cantidad
+         FROM pago_lineas pl JOIN pagos p ON p.id = pl.pago_id
+        WHERE p.comanda_id = ? AND pl.linea_id = ?`
+    );
+    let brutoSeleccionado = 0;
+    let unidadesSeleccionadas = 0;
+    for (const seleccion of lineasPago) {
+      const linea = disponibles.get(seleccion.lineaId, comanda.id) as
+        | { cantidad: number; precio_unitario: number }
+        | undefined;
+      if (!linea) return res.status(400).json({ error: "Uno de los productos ya no está disponible para cobrar" });
+      const pagadas = cantidadPagada.get(comanda.id, seleccion.lineaId) as { cantidad: number };
+      const unidadesPendientes = linea.cantidad - pagadas.cantidad;
+      if (seleccion.cantidad > unidadesPendientes) {
+        return res.status(400).json({ error: "Has seleccionado más unidades de las que quedan por cobrar" });
+      }
+      brutoSeleccionado += seleccion.cantidad * linea.precio_unitario;
+      unidadesSeleccionadas += seleccion.cantidad;
+    }
+
+    const disponiblesTotales = db.prepare(
+      `SELECT COALESCE(SUM(l.cantidad - COALESCE(pagadas.cantidad, 0)), 0) AS cantidad
+         FROM lineas_comanda l
+         LEFT JOIN (
+           SELECT pl.linea_id, SUM(pl.cantidad) AS cantidad
+             FROM pago_lineas pl JOIN pagos p ON p.id = pl.pago_id
+            WHERE p.comanda_id = ? GROUP BY pl.linea_id
+         ) pagadas ON pagadas.linea_id = l.id
+        WHERE l.comanda_id = ? AND COALESCE(l.anulada, 0) = 0`
+    ).get(comanda.id, comanda.id) as { cantidad: number };
+
+    // Si se seleccionan todas las unidades restantes, cobra el saldo exacto
+    // para absorber diferencias de céntimos del descuento prorrateado.
+    importe = unidadesSeleccionadas === disponiblesTotales.cantidad
+      ? pendiente
+      : r2(brutoSeleccionado * (cuenta.bruto > 0 ? cuenta.total / cuenta.bruto : 0));
+    if (importe <= 0) return res.status(400).json({ error: "Los productos seleccionados no tienen importe pendiente" });
+  }
+
+  if (!lineasPago && importe <= 0) {
+    return res.status(400).json({ error: "Indica un importe de pago válido" });
+  }
+
   // Toleramos 1 céntimo de redondeo, pero no cobrar de más "de verdad":
   // un importe mayor que lo pendiente casi siempre es un error de tecleo.
   if (importe > pendiente + 0.01) {
     return res.status(400).json({
       error: `El importe (${importe.toFixed(2)}) supera lo pendiente (${pendiente.toFixed(2)})`,
     });
+  }
+  if (impresoraTicketId && importe < pendiente - 0.01) {
+    return res.status(400).json({ error: "El ticket de pago se puede imprimir al liquidar toda la cuenta" });
+  }
+  if (empresaId && importe + pagado < total - 0.01) {
+    return res.status(400).json({ error: "Para emitir una factura de empresa hay que liquidar toda la cuenta en un solo pago" });
   }
 
   // Si viene impresora de ticket, validamos que exista y sea del tipo correcto.
@@ -101,6 +178,13 @@ pagosRouter.post("/comandas/:comandaId/pagos", requireAuth, (req, res) => {
       `INSERT INTO pagos (id, comanda_id, metodo, importe, propina, impresora_ticket_id, creado_en)
        VALUES (?, ?, ?, ?, ?, ?, ?)`
     ).run(pagoId, comanda.id, metodo, importe, propina, impresoraTicketId, ahora);
+
+    if (lineasPago) {
+      const insertarLineaPago = db.prepare(
+        `INSERT INTO pago_lineas (pago_id, linea_id, cantidad) VALUES (?, ?, ?)`
+      );
+      for (const linea of lineasPago) insertarLineaPago.run(pagoId, linea.lineaId, linea.cantidad);
+    }
 
     // NUMERACIÓN DE FACTURA SIMPLIFICADA.
     // Todo ticket que se entrega al cliente es, legalmente, una factura
