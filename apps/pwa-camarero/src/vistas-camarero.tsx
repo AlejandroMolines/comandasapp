@@ -394,6 +394,9 @@ export function Comanda({
   /** Tarjeta de producto con contador y acceso a comentarios. */
   const FilaProducto = ({ p }: { p: CartaCompleta["productos"][0] }) => {
     const n = cantidadDe(p.id);
+    let alergenos: string[] = [];
+    try { alergenos = typeof p.alergenos === "string" ? JSON.parse(p.alergenos) : p.alergenos ?? []; } catch { /* producto antiguo */ }
+    const avisoAlergenos = alergenos.length ? `⚠ ${alergenos.map((a) => a.replace("_", " ")).join(", ")}` : "";
     const grande = preferencias.tamano !== "normal";
     const alto = preferencias.tamano === "muy-grande";
     if (preferencias.vista === "cajas") return (
@@ -402,6 +405,7 @@ export function Comanda({
           onClick={() => setNotaPara({ productoId: p.id, nombre: p.nombre, precio: p.precio })}>
           <span className={cn("line-clamp-2 w-full font-semibold", grande ? "text-base" : "text-sm")}>{p.nombre}</span>
           <span className="mt-1 font-mono text-sm text-muted-foreground">{p.disponible ? eur(p.precio) : "Agotado"}</span>
+          {avisoAlergenos && <span className="mt-1 text-xs font-medium text-amber-700">{avisoAlergenos}</span>}
         </button>
         <div className="mt-3 flex items-center justify-between gap-2">
           <Button variant="secondary" size={grande ? "default" : "icon-sm"} className={alto ? "h-12 min-w-12" : ""} disabled={!p.disponible || n === 0}
@@ -428,6 +432,7 @@ export function Comanda({
             {p.disponible ? eur(p.precio) : "Agotado"}
             {p.disponible && <span className="ml-1.5 not-italic opacity-70">· toca para nota</span>}
           </span>
+          {avisoAlergenos && <span className="block text-xs font-medium text-amber-700">{avisoAlergenos}</span>}
         </button>
         <Button variant="secondary" size={grande ? "default" : "icon-sm"} className={alto ? "h-12 min-w-12" : ""} disabled={!p.disponible || n === 0}
           onClick={() => sumar(p, -1)} aria-label={`Quitar ${p.nombre}`}><Minus /></Button>
@@ -1048,7 +1053,7 @@ export function Cobro({ comandaId, titulo, onCerrado, onVolver }: {
       return avisar("El dinero entregado no cubre el importe que paga", true);
     }
     if (empresaId && recibido + cuenta.pagado < cuenta.total - 0.01) {
-      return avisar("Para emitir factura de empresa hay que cobrar toda la cuenta en un solo pago", true);
+      return avisar("La factura de empresa se emite al liquidar el saldo pendiente de la cuenta", true);
     }
     setCobrando(true);
     try {

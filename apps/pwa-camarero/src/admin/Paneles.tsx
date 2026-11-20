@@ -352,8 +352,16 @@ export function VistaTurnos() {
   const [inicial, setInicial] = useState("");
   const [cierre, setCierre] = useState<{ efectivoEsperado: number; descuadre: number } | null>(null);
   const [toast, avisar] = useToast();
+  const [movimientos, setMovimientos] = useState<{ id: string; tipo: "ingreso" | "retirada"; importe: number; motivo: string; usuario: string; creado_en: string }[]>([]);
+  const [tipoMovimiento, setTipoMovimiento] = useState<"ingreso" | "retirada">("ingreso");
+  const [importeMovimiento, setImporteMovimiento] = useState("");
+  const [motivoMovimiento, setMotivoMovimiento] = useState("");
 
-  const cargar = useCallback(async () => setTurnos(await api<Turno[]>("/turnos")), []);
+  const cargar = useCallback(async () => {
+    const lista = await api<Turno[]>("/turnos"); setTurnos(lista);
+    const turnoActivo = lista.find((t) => !t.cerrado_en);
+    setMovimientos(turnoActivo ? await api(`/turnos/${turnoActivo.id}/movimientos`) : []);
+  }, []);
   useEffect(() => { void cargar(); }, [cargar]);
 
   const activo = turnos.find((t) => !t.cerrado_en);
@@ -392,6 +400,14 @@ export function VistaTurnos() {
     } catch (e) { avisar((e as Error).message, true); }
   };
 
+  const registrarMovimiento = async () => {
+    if (!activo || !importeMovimiento || !motivoMovimiento.trim()) return;
+    try {
+      await api(`/turnos/${activo.id}/movimientos`, { method: "POST", body: { tipo: tipoMovimiento, importe: Number(importeMovimiento), motivo: motivoMovimiento.trim() } });
+      setImporteMovimiento(""); setMotivoMovimiento(""); avisar("Movimiento de caja registrado"); await cargar();
+    } catch (e) { avisar((e as Error).message, true); }
+  };
+
   return (
     <div className="flex flex-col gap-4">
       {toast}
@@ -420,6 +436,22 @@ export function VistaTurnos() {
                 Este es el dinero con el que se empieza cada turno. Se aplica también a los
                 turnos siguientes y <b>no cambia solo</b> al cerrar caja: solo se modifica aquí.
               </p>
+
+              <div className="flex flex-col gap-2 border-b pb-4">
+                <b className="text-sm">Movimientos de efectivo</b>
+                <p className="text-xs text-muted-foreground">Registra entradas de cambio y retiradas de efectivo con el motivo.</p>
+                <div className="flex flex-wrap gap-2">
+                  <Select value={tipoMovimiento} onChange={(e) => setTipoMovimiento(e.target.value as "ingreso" | "retirada")}>
+                    <option value="ingreso">Ingreso</option><option value="retirada">Retirada</option>
+                  </Select>
+                  <Input aria-label="Importe del movimiento" inputMode="decimal" className="w-32 font-mono" placeholder="Importe €" value={importeMovimiento} onChange={(e) => setImporteMovimiento(e.target.value.replace(",", "."))} />
+                  <Input aria-label="Motivo del movimiento" className="min-w-40 flex-1" placeholder="Motivo" value={motivoMovimiento} onChange={(e) => setMotivoMovimiento(e.target.value)} />
+                  <Button variant="secondary" disabled={!importeMovimiento || !motivoMovimiento.trim()} onClick={() => void registrarMovimiento()}>Registrar</Button>
+                </div>
+                {movimientos.length > 0 && <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
+                  {movimientos.slice(0, 5).map((m) => <li key={m.id} className="flex gap-2"><span className="flex-1">{m.tipo === "ingreso" ? "Ingreso" : "Retirada"} · {m.motivo} · {m.usuario}</span><b className={m.tipo === "retirada" ? "text-destructive" : "text-foreground"}>{m.tipo === "retirada" ? "−" : "+"}{eur(m.importe)}</b></li>)}
+                </ul>}
+              </div>
 
               <div className="flex items-end gap-3">
                 <div className="flex flex-1 flex-col gap-1.5">
@@ -685,6 +717,21 @@ export function VistaAjustes() {
             <Switch checked={imprimirLlevar} onCheckedChange={guardarLlevar} title="Imprimir pedidos para llevar" />
             <span className="text-sm">{imprimirLlevar ? "Se envían a las impresoras" : "Solo se registran (sin imprimir)"}</span>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Información visible para clientes</CardTitle>
+          <p className="text-sm text-muted-foreground">Prepara un cartel para colocar en el local. Revisa que se adapte a los servicios y excepciones de tu establecimiento.</p>
+        </CardHeader>
+        <CardContent>
+          <Button variant="secondary" onClick={() => {
+            const ventana = window.open("", "_blank");
+            if (!ventana) { avisar("Permite las ventanas emergentes para imprimir el cartel", true); return; }
+            ventana.document.write(`<!doctype html><html lang="es"><meta charset="utf-8"><title>Información al cliente</title><style>body{font-family:system-ui,sans-serif;max-width:700px;margin:12vh auto;padding:2rem;text-align:center;color:#17202a}h1{font-size:2.5rem}p{font-size:1.5rem;line-height:1.5;margin:2.5rem 0}.nota{font-size:1rem;color:#555}@media print{button{display:none}}</style><h1>Información para nuestros clientes</h1><p>Disponemos de agua no envasada de manera gratuita.</p><p>Si no terminas tu comida, puedes pedirnos un recipiente para llevártela.</p><p class="nota">Pregunta a nuestro equipo si necesitas información sobre alérgenos.</p><button onclick="window.print()">Imprimir cartel</button></html>`);
+            ventana.document.close();
+          }}>Preparar e imprimir cartel</Button>
         </CardContent>
       </Card>
 

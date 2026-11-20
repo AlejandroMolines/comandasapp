@@ -38,17 +38,12 @@ destinatario (razón social, NIF, domicilio), descripción, y **desglose por tip
 - Numeración `FAC-2026/00001` … `FAC-2026/00004` correlativa y sin saltos.
 - Factura impresa comprobada en la impresora simulada, con todos los datos legales.
 
-## PENDIENTE IMPORTANTE: Verifactu
+## Estado fiscal: Veri*Factu pendiente
 
-Verifactu es obligatorio desde el **1 de enero de 2027** para sociedades y el
-**1 de julio de 2027** para el resto de empresas y autónomos. Exige hash encadenado
-entre facturas, código QR, registro de eventos del sistema e inalterabilidad de los
-registros. La sanción por usar software no conforme es de **50.000 € por ejercicio**.
+El Reglamento de sistemas informáticos de facturación exige preservar integridad, trazabilidad, inalterabilidad y registro de eventos. Los plazos vigentes son el **1 de enero de 2027** para contribuyentes del Impuesto sobre Sociedades y el **1 de julio de 2027** para el resto de obligados. La modalidad Veri*Factu remite registros a la AEAT; no debe confundirse con una obligación universal de remisión en esa modalidad. La Ley 11/2021 distingue sanciones según conducta y sujeto: no existe una sanción genérica única por “usar software no conforme”.
+**ComandasApp no está certificado ni debe usarse todavía como sistema fiscal conforme al RD 1007/2023.** Faltan el registro de eventos y huellas encadenadas conforme a la especificación técnica, el QR AEAT validado, la declaración responsable del productor y el flujo para rectificar facturas. Los cambios recientes solo evitan numerar como facturas los pagos parciales y separan la factura completa de empresa de la simplificada; no certifican el producto.
 
-Lo implementado cumple el reglamento de facturación vigente, pero **todavía no es un
-sistema Verifactu**: falta el encadenado criptográfico, el QR y el registro de eventos.
-Hay margen hasta 2027, pero conviene tenerlo en el plan — sobre todo si el objetivo es
-vender esto a otros restaurantes.
+Una factura simplificada de hostelería tiene un límite de 3.000 € IVA incluido. La app impide imprimirla por encima de ese importe; hace falta registrar los datos del cliente y emitir una factura completa. Antes de uso fiscal real hay que validar el flujo y los datos con asesoría fiscal y completar la conformidad técnica correspondiente.
 
 *Nota: esto no es asesoramiento fiscal. Antes de emitir facturas reales conviene
 confirmar con un gestor, especialmente los tipos de IVA aplicados a cada producto.*

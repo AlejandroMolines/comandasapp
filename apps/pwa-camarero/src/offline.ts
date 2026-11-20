@@ -8,7 +8,7 @@ import { api, ApiError } from "./api";
 export interface CartaCompleta {
   menus: { id: string; nombre: string }[];
   categorias: { id: string; menu_id: string; categoria_padre_id: string | null; nombre: string; orden: number }[];
-  productos: { id: string; categoria_id: string; nombre: string; precio: number; disponible: number }[];
+  productos: { id: string; categoria_id: string; nombre: string; precio: number; disponible: number; alergenos?: string[] | string }[];
 }
 export interface Zona { id: string; nombre: string; orden: number }
 export interface Mesa { id: string; zona_id: string; nombre: string; estado: string }

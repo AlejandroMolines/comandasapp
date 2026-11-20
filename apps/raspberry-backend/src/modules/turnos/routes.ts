@@ -154,12 +154,15 @@ turnosRouter.get("/informe", requireAuth, requireRole("admin"), (req, res) => {
           WHERE c.turno_id = ? AND pg.metodo = 'efectivo'`
       )
       .get(t.id) as { n: number };
-    const esperado = Number((t.caja_inicial + efec.n).toFixed(2));
+    const cajaMovimientos = db.prepare(`SELECT COALESCE(SUM(CASE WHEN tipo = 'ingreso' THEN importe ELSE -importe END), 0) AS n
+      FROM movimientos_caja WHERE turno_id = ? AND restaurante_id = ?`).get(t.id, RESTAURANTE_ID) as { n: number };
+    const esperado = Number((t.caja_inicial + efec.n + cajaMovimientos.n).toFixed(2));
     return {
       abierto_en: t.abierto_en,
       cerrado_en: t.cerrado_en,
       cajaInicial: t.caja_inicial,
       efectivoCobrado: Number(efec.n.toFixed(2)),
+      movimientosEfectivo: Number(cajaMovimientos.n.toFixed(2)),
       efectivoEsperado: esperado,
       cajaContada: t.caja_final,
       descuadre: t.caja_final === null ? null : Number((t.caja_final - esperado).toFixed(2)),
@@ -299,6 +302,37 @@ turnosRouter.patch("/:id/caja-inicial", requireAuth, requireRole("admin"), (req,
   res.json({ id: req.params.id, cajaInicial: parsed.data.cajaInicial });
 });
 
+// Ingresos/retiradas de caja (p. ej. cambio o pago a proveedor) quedan
+// atribuidos a usuario y turno, y afectan al efectivo esperado del cierre.
+turnosRouter.post("/:id/movimientos", requireAuth, requireRole("admin"), (req, res) => {
+  const parsed = z.object({
+    tipo: z.enum(["ingreso", "retirada"]),
+    importe: z.number().positive().finite(),
+    motivo: z.string().trim().min(3).max(200),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json(parsed.error.flatten());
+  const turno = db.prepare(`SELECT cerrado_en FROM turnos WHERE id = ? AND restaurante_id = ?`)
+    .get(req.params.id, RESTAURANTE_ID) as { cerrado_en: string | null } | undefined;
+  if (!turno) return res.status(404).json({ error: "Turno no encontrado" });
+  if (turno.cerrado_en) return res.status(409).json({ error: "No se pueden añadir movimientos a un turno cerrado" });
+  const id = uuid();
+  const creadoEn = new Date().toISOString();
+  db.prepare(`INSERT INTO movimientos_caja (id, restaurante_id, turno_id, usuario_id, tipo, importe, motivo, creado_en)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(id, RESTAURANTE_ID, req.params.id, req.auth!.usuarioId, parsed.data.tipo, parsed.data.importe, parsed.data.motivo, creadoEn);
+  req.app.get("io")?.to(RESTAURANTE_ID).emit("caja:actualizada", { turnoId: req.params.id });
+  res.status(201).json({ id, ...parsed.data, creado_en: creadoEn });
+});
+
+turnosRouter.get("/:id/movimientos", requireAuth, requireRole("admin"), (req, res) => {
+  const turno = db.prepare(`SELECT id FROM turnos WHERE id = ? AND restaurante_id = ?`).get(req.params.id, RESTAURANTE_ID);
+  if (!turno) return res.status(404).json({ error: "Turno no encontrado" });
+  const movimientos = db.prepare(`SELECT m.id, m.tipo, m.importe, m.motivo, m.creado_en, u.nombre AS usuario
+    FROM movimientos_caja m JOIN usuarios u ON u.id = m.usuario_id
+    WHERE m.turno_id = ? AND m.restaurante_id = ? ORDER BY m.creado_en DESC`).all(req.params.id, RESTAURANTE_ID);
+  res.json(movimientos);
+});
+
 turnosRouter.post("/:id/cerrar", requireAuth, requireRole("admin"), (req, res) => {
   const parsed = cerrarTurnoSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json(parsed.error.flatten());
@@ -327,7 +361,9 @@ turnosRouter.post("/:id/cerrar", requireAuth, requireRole("admin"), (req, res) =
         WHERE c.turno_id = ? AND pg.metodo = 'efectivo'`
     )
     .get(req.params.id) as { total: number };
-  const esperado = turno.caja_inicial + efectivo.total;
+  const movimientos = db.prepare(`SELECT COALESCE(SUM(CASE WHEN tipo = 'ingreso' THEN importe ELSE -importe END), 0) AS total
+    FROM movimientos_caja WHERE turno_id = ? AND restaurante_id = ?`).get(req.params.id, RESTAURANTE_ID) as { total: number };
+  const esperado = turno.caja_inicial + efectivo.total + movimientos.total;
   const descuadre = parsed.data.cajaFinal - esperado;
 
   db.prepare(`UPDATE turnos SET cerrado_en = ?, caja_final = ? WHERE id = ?`).run(
@@ -346,6 +382,7 @@ turnosRouter.post("/:id/cerrar", requireAuth, requireRole("admin"), (req, res) =
     id: req.params.id,
     cajaFinal: parsed.data.cajaFinal,
     efectivoEsperado: esperado,
+    movimientosEfectivo: movimientos.total,
     descuadre,
     comandasAbiertas: comandasAbiertas.n,
     nuevoTurnoId: nuevo?.id ?? null,

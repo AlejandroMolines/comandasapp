@@ -19,7 +19,7 @@ Así que la política es:
 
 | Dato | Retención | Motivo |
 |---|---|---|
-| Comandas, pagos, facturas | **5 años** | La ley obliga a 4 (prescripción fiscal); uno más de margen |
+| Comandas, pagos, facturas | Sin purga automática | La organización debe definir plazos por categoría y atender obligaciones fiscales, mercantiles y de privacidad aplicables |
 | `log_impresion` ya impreso | **7 días** | Es lo único que crece de verdad y no aporta nada pasadas unas horas |
 | Reimprimir tickets | **90 días** | Límite operativo, no de espacio: más allá de tres meses no tiene sentido reimprimir un ticket |
 | Consulta en la app | Sin límite, paginada de 50 en 50 | El filtro por fechas evita cargar años de golpe |

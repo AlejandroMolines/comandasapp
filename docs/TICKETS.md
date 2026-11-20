@@ -68,12 +68,10 @@ cada serie sea correlativa y sin saltos por sí misma.
 
 | Serie | Documento | Se genera |
 |---|---|---|
-| `SIM` (configurable) | Factura simplificada = ticket normal | En **todos** los cobros |
+| `SIM` (configurable) | Factura simplificada = ticket normal | Al liquidar la cuenta e imprimir el documento |
 | `FAC` (configurable) | Factura completa a empresa | Solo si se elige empresa al cobrar |
 
-El número se asigna **dentro de la misma transacción que el pago**, leyendo
-`MAX(numero)+1`, con un índice `UNIQUE` como red de seguridad. Así no puede
-haber duplicados ni un pago sin numerar.
+Los pagos parciales no consumen número. El número se asigna al pago que liquida la cuenta y genera la factura simplificada, dentro de la transacción. Una factura completa a empresa usa su serie propia y no recibe además un número simplificado. El índice `UNIQUE` evita duplicados. Esto no implementa todavía la cadena de registros y el sistema de eventos del RD 1007/2023.
 
 Se configuran en **Panel → Ajustes**: `fiscal_serie` (completas) y
 `fiscal_serie_simplificada` (tickets).
@@ -94,10 +92,10 @@ Si el admin todavía no ha rellenado razón social, NIF y dirección en Ajustes:
   salvaguarda para no dejar al cliente sin comprobante.
 - Las facturas completas directamente no se pueden emitir.
 
-## PENDIENTE: Verifactu (2027)
+## Veri*Factu y estado de conformidad
 
-Verifactu añade requisitos **al papel que se entrega al cliente**, no solo al
-sistema interno:
+El reglamento exige registros, controles y datos en documentos. La implementación
+de los requisitos de ComandasApp está pendiente:
 
 - **Código QR obligatorio** en el ticket, legible y enlazando a la URL de
   verificación de la AEAT.
@@ -106,13 +104,9 @@ sistema interno:
 - Por dentro: hash encadenado entre facturas, registro de eventos e
   inalterabilidad.
 
-Fechas: **1 de enero de 2027** para sociedades y **1 de julio de 2027** para
-autónomos y el resto. La sanción por software no conforme es de **50.000 € por
-ejercicio**.
+Fechas vigentes: **1 de enero de 2027** para contribuyentes del Impuesto sobre Sociedades y **1 de julio de 2027** para el resto de obligados. La modalidad Veri*Factu de envío a AEAT es una opción del sistema; la obligación aplicable y las sanciones dependen del caso y del papel del productor/usuario.
 
-Nada de esto está implementado todavía. El formato actual cumple el reglamento
-de facturación vigente, y la estructura (series numeradas, datos congelados) está
-preparada para añadir el hash y el QR sin rehacer nada.
+ComandasApp **no está certificada ni debe considerarse conforme al RD 1007/2023**. Faltan el hash encadenado y registro de eventos conforme a especificaciones AEAT, QR validado, declaración responsable del productor y gestión de rectificativas. La app impide imprimir una simplificada superior a 3.000 € IVA incluido.
 
 *No es asesoramiento fiscal: confírmalo con tu gestor antes de usar esto en
 producción, sobre todo los tipos de IVA de cada producto.*

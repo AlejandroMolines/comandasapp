@@ -248,12 +248,13 @@ const productoSchema = z.object({
   // IVA: 10% comida y refrescos, 21% alcohol. Necesario para el desglose
   // legal de las facturas a empresa.
   tipoIva: z.number().refine((v) => [0, 4, 10, 21].includes(v), "Tipo de IVA no válido").default(10),
+  alergenos: z.array(z.enum(["gluten", "crustaceos", "huevos", "pescado", "cacahuetes", "soja", "leche", "frutos_secos", "apio", "mostaza", "sesamo", "sulfitos", "altramuces", "moluscos"])).default([]),
 });
 
 cartaRouter.post("/productos", requireAuth, requireRole("admin"), (req, res) => {
   const parsed = productoSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json(parsed.error.flatten());
-  const { categoriaId, nombre, precio, descripcion, disponible, orden, tipoIva } = parsed.data;
+  const { categoriaId, nombre, precio, descripcion, disponible, orden, tipoIva, alergenos } = parsed.data;
 
   const categoria = db
     .prepare(`SELECT 1 FROM categorias WHERE id = ? AND restaurante_id = ?`)
@@ -262,9 +263,9 @@ cartaRouter.post("/productos", requireAuth, requireRole("admin"), (req, res) => 
 
   const id = uuid();
   db.prepare(
-    `INSERT INTO productos (id, restaurante_id, categoria_id, nombre, precio, descripcion, disponible, orden, tipo_iva)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(id, RESTAURANTE_ID, categoriaId, nombre, precio, descripcion, disponible ? 1 : 0, orden, tipoIva);
+    `INSERT INTO productos (id, restaurante_id, categoria_id, nombre, precio, descripcion, disponible, orden, tipo_iva, alergenos)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(id, RESTAURANTE_ID, categoriaId, nombre, precio, descripcion, disponible ? 1 : 0, orden, tipoIva, JSON.stringify(alergenos));
   res.status(201).json({ id, ...parsed.data });
 });
 
@@ -285,7 +286,7 @@ cartaRouter.put("/productos/:id", requireAuth, requireRole("admin"), (req, res) 
   }
 
   db.prepare(
-    `UPDATE productos SET categoria_id = ?, nombre = ?, precio = ?, descripcion = ?, disponible = ?, orden = ?, tipo_iva = ? WHERE id = ?`
+    `UPDATE productos SET categoria_id = ?, nombre = ?, precio = ?, descripcion = ?, disponible = ?, orden = ?, tipo_iva = ?, alergenos = ? WHERE id = ?`
   ).run(
     d.categoriaId ?? existente.categoria_id,
     d.nombre ?? existente.nombre,
@@ -294,6 +295,7 @@ cartaRouter.put("/productos/:id", requireAuth, requireRole("admin"), (req, res) 
     d.disponible === undefined ? existente.disponible : d.disponible ? 1 : 0,
     d.orden ?? existente.orden,
     d.tipoIva ?? existente.tipo_iva,
+    d.alergenos === undefined ? existente.alergenos ?? "[]" : JSON.stringify(d.alergenos),
     req.params.id
   );
   res.json({ id: req.params.id, ...d });

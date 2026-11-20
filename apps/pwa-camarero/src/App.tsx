@@ -1,6 +1,6 @@
 import {
   BarChart3, Building2, ClipboardList, DoorOpen, LayoutGrid, LogOut, Palette, Printer,
-  Receipt, Tag, UsersRound, UtensilsCrossed,
+  PackageOpen, Receipt, Tag, UsersRound, UtensilsCrossed,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
@@ -15,6 +15,7 @@ import { VistaAjustes, VistaImpresoras, VistaPersonal, VistaSalas, VistaTurnos }
 import { VistaEmpresas } from "./admin/Empresas";
 import { VistaExtras } from "./admin/Extras";
 import { VistaHistorial } from "./admin/Historial";
+import { VistaInventario } from "./admin/Inventario";
 import { VistaResumen } from "./admin/Resumen";
 import {
   cargarMaestros, encolar, onCola, pendientes, vaciarCola,
@@ -34,13 +35,14 @@ type VistaSala =
   | { v: "comanda"; comandaId: string; titulo: string; mesaId: string | null }
   | { v: "cobro"; comandaId: string; titulo: string; mesaId: string | null };
 
-type SeccionAdmin = "resumen" | "sala" | "carta" | "extras" | "salas" | "impresoras" | "empresas" | "historial" | "turnos" | "personal" | "ajustes";
+type SeccionAdmin = "resumen" | "sala" | "carta" | "extras" | "inventario" | "salas" | "impresoras" | "empresas" | "historial" | "turnos" | "personal" | "ajustes";
 
 const NAV_ADMIN: { id: SeccionAdmin; nombre: string; Icono: typeof BarChart3 }[] = [
   { id: "resumen", nombre: "Resumen", Icono: BarChart3 },
   { id: "sala", nombre: "Tomar comandas", Icono: ClipboardList },
   { id: "carta", nombre: "Carta", Icono: UtensilsCrossed },
   { id: "extras", nombre: "Extras", Icono: Tag },
+  { id: "inventario", nombre: "Inventario", Icono: PackageOpen },
   { id: "salas", nombre: "Salas", Icono: LayoutGrid },
   { id: "impresoras", nombre: "Impresoras", Icono: Printer },
   { id: "empresas", nombre: "Empresas", Icono: Building2 },
@@ -108,6 +110,7 @@ function LayoutAdmin({ onSalir }: { onSalir: () => void }) {
         {seccion === "sala" && <FlujoSala embebido />}
         {seccion === "carta" && <VistaCarta />}
         {seccion === "extras" && <VistaExtras />}
+        {seccion === "inventario" && <VistaInventario />}
         {seccion === "salas" && <VistaSalas />}
         {seccion === "impresoras" && <VistaImpresoras />}
         {seccion === "empresas" && <VistaEmpresas />}

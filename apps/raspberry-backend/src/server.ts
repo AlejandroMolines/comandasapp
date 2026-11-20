@@ -15,6 +15,7 @@ import { cartaRouter } from "./modules/carta/routes.js";
 import { empresasRouter } from "./modules/empresas/routes.js";
 import { extrasRouter } from "./modules/extras/routes.js";
 import { historialRouter } from "./modules/historial/routes.js";
+import { inventarioRouter } from "./modules/inventario/routes.js";
 import { comandasRouter } from "./modules/comandas/routes.js";
 import { destinosRouter } from "./modules/destinos/routes.js";
 import { espaciosRouter } from "./modules/espacios/routes.js";
@@ -149,6 +150,7 @@ app.use("/carta", cartaRouter);
 app.use("/destinos", destinosRouter);
 app.use("/comandas", comandasRouter);
 app.use("/turnos", turnosRouter);
+app.use("/inventario", inventarioRouter);
 app.use("/", pagosRouter); // expone /comandas/:id/cuenta y /comandas/:id/pagos
 
 // En producción, el propio Raspberry sirve la PWA compilada en el mismo origen.

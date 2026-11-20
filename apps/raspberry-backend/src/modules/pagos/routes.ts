@@ -148,7 +148,10 @@ pagosRouter.post("/comandas/:comandaId/pagos", requireAuth, (req, res) => {
     return res.status(400).json({ error: "El ticket de pago se puede imprimir al liquidar toda la cuenta" });
   }
   if (empresaId && importe + pagado < total - 0.01) {
-    return res.status(400).json({ error: "Para emitir una factura de empresa hay que liquidar toda la cuenta en un solo pago" });
+    return res.status(400).json({ error: "La factura de empresa se emite al liquidar el saldo pendiente de la cuenta" });
+  }
+  if (impresoraTicketId && total > 3000 && !empresaId) {
+    return res.status(400).json({ error: "Una factura simplificada de hostelería no puede superar 3.000 €. Registra los datos del cliente para emitir una factura completa." });
   }
 
   // Si viene impresora de ticket, validamos que exista y sea del tipo correcto.
@@ -170,8 +173,7 @@ pagosRouter.post("/comandas/:comandaId/pagos", requireAuth, (req, res) => {
   const ahora = new Date().toISOString();
   let comandaCerrada = false;
   let factura: ReturnType<typeof emitirFactura> | null = null;
-  let numeroSimpl = 0;
-  let numeroSimplCompleto = "";
+  let numeroSimplCompleto: string | null = null;
 
   const tx = db.transaction(() => {
     db.prepare(
@@ -185,26 +187,6 @@ pagosRouter.post("/comandas/:comandaId/pagos", requireAuth, (req, res) => {
       );
       for (const linea of lineasPago) insertarLineaPago.run(pagoId, linea.lineaId, linea.cantidad);
     }
-
-    // NUMERACIÓN DE FACTURA SIMPLIFICADA.
-    // Todo ticket que se entrega al cliente es, legalmente, una factura
-    // simplificada (RD 1619/2012) y necesita serie + número correlativo sin
-    // saltos. Se numera aquí, dentro de la misma transacción que el pago,
-    // usando una serie DISTINTA a la de las facturas completas para que las
-    // dos numeraciones sean independientes y ninguna tenga huecos.
-    const serieSimpl = getAjuste("fiscal_serie_simplificada") || "SIM";
-    const ejercicioSimpl = new Date().getFullYear();
-    const ultimoSimpl = db
-      .prepare(
-        `SELECT COALESCE(MAX(numero_simpl), 0) AS n FROM pagos
-          WHERE serie_simpl = ? AND ejercicio_simpl = ?`
-      )
-      .get(serieSimpl, ejercicioSimpl) as { n: number };
-    numeroSimpl = ultimoSimpl.n + 1;
-    db.prepare(
-      `UPDATE pagos SET serie_simpl = ?, numero_simpl = ?, ejercicio_simpl = ? WHERE id = ?`
-    ).run(serieSimpl, numeroSimpl, ejercicioSimpl, pagoId);
-    numeroSimplCompleto = `${serieSimpl}-${ejercicioSimpl}/${String(numeroSimpl).padStart(5, "0")}`;
 
     // Factura a empresa: se emite DENTRO de la transacción para que no pueda
     // quedar un pago sin su factura (ni una factura sin su pago).
@@ -230,6 +212,20 @@ pagosRouter.post("/comandas/:comandaId/pagos", requireAuth, (req, res) => {
     // ¿Comanda saldada? -> cerrar y liberar mesa.
     const nuevoPendiente = Number((total - (pagado + importe)).toFixed(2));
     if (nuevoPendiente <= 0.01) {
+      // Solo se numera al emitir un documento al cliente al cerrar la cuenta:
+      // los pagos parciales no son facturas independientes. Una factura
+      // completa sustituye a la simplificada para evitar duplicar documentos.
+      if (impresoraTicketId && !empresaId) {
+        const serieSimpl = getAjuste("fiscal_serie_simplificada") || "SIM";
+        const ejercicioSimpl = new Date().getFullYear();
+        const ultimoSimpl = db.prepare(
+          `SELECT COALESCE(MAX(numero_simpl), 0) AS n FROM pagos WHERE serie_simpl = ? AND ejercicio_simpl = ?`
+        ).get(serieSimpl, ejercicioSimpl) as { n: number };
+        const numeroSimpl = ultimoSimpl.n + 1;
+        db.prepare(`UPDATE pagos SET serie_simpl = ?, numero_simpl = ?, ejercicio_simpl = ? WHERE id = ?`)
+          .run(serieSimpl, numeroSimpl, ejercicioSimpl, pagoId);
+        numeroSimplCompleto = `${serieSimpl}-${ejercicioSimpl}/${String(numeroSimpl).padStart(5, "0")}`;
+      }
       db.prepare(`UPDATE comandas SET estado = 'cerrada', cerrado_en = ? WHERE id = ?`).run(
         ahora,
         comanda.id
