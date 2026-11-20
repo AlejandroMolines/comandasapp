@@ -8,7 +8,8 @@ import { useToast } from "../toast";
 
 interface Menu { id: string; nombre: string; activo: number }
 interface Categoria { id: string; menu_id: string; categoria_padre_id: string | null; nombre: string; orden: number }
-interface Producto { id: string; categoria_id: string; nombre: string; precio: number; disponible: number; tipo_iva: number }
+const ALERGENOS = ["gluten", "crustaceos", "huevos", "pescado", "cacahuetes", "soja", "leche", "frutos_secos", "apio", "mostaza", "sesamo", "sulfitos", "altramuces", "moluscos"] as const;
+interface Producto { id: string; categoria_id: string; nombre: string; precio: number; disponible: number; tipo_iva: number; alergenos: string[] | string }
 interface Destino { id: string; nombre: string; tipo: string }
 
 type ModalCarta =
@@ -68,6 +69,10 @@ export function VistaCarta() {
           <div key={p.id} className="ml-4 flex items-center gap-2 py-0.5 text-sm text-muted-foreground">
             <span className={cn("flex-1", !p.disponible && "line-through opacity-60")}>
               <span className="text-foreground">{p.nombre}</span>
+              {(() => { try {
+                const alergenos = typeof p.alergenos === "string" ? JSON.parse(p.alergenos) as string[] : p.alergenos;
+                return alergenos?.length ? <span className="ml-2 text-xs text-amber-700" title={`Alérgenos: ${alergenos.join(", ")}`}>⚠ {alergenos.map((a) => a.replace("_", " ")).join(", ")}</span> : null;
+              } catch { return null; } })()}
               {sinDestino.some((s) => s.id === p.id) ? (
                 <Badge variant="warning" className="ml-2">sin impresora</Badge>
               ) : mapa.productos[p.id]?.resuelto && (
@@ -149,11 +154,11 @@ export function VistaCarta() {
           : modal?.t === "editar-producto" ? `Editar ${modal.producto.nombre}` : ""}
         inicial={modal?.t === "editar-producto" ? modal.producto : undefined}
         onCerrar={() => setModal(null)}
-        onOk={(nombre, precio, tipoIva) => {
+        onOk={(nombre, precio, tipoIva, alergenos) => {
           if (modal?.t === "producto")
-            void accion(() => api("/carta/productos", { method: "POST", body: { categoriaId: modal.categoria.id, nombre, precio, tipoIva } }), "Producto creado");
+            void accion(() => api("/carta/productos", { method: "POST", body: { categoriaId: modal.categoria.id, nombre, precio, tipoIva, alergenos } }), "Producto creado");
           if (modal?.t === "editar-producto")
-            void accion(() => api(`/carta/productos/${modal.producto.id}`, { method: "PUT", body: { nombre, precio, tipoIva } }), "Producto actualizado");
+            void accion(() => api(`/carta/productos/${modal.producto.id}`, { method: "PUT", body: { nombre, precio, tipoIva, alergenos } }), "Producto actualizado");
         }} />
 
       <Dialog open={modal?.t === "destino-cat"} onOpenChange={(o) => !o && setModal(null)}
@@ -197,17 +202,20 @@ function FormSimple({ abierto, titulo, placeholder, onOk, onCerrar }: {
 }
 
 function FormProducto({ abierto, titulo, inicial, onOk, onCerrar }: {
-  abierto: boolean; titulo: string; inicial?: { nombre: string; precio: number; tipo_iva?: number };
-  onOk: (nombre: string, precio: number, tipoIva: number) => void; onCerrar: () => void;
+  abierto: boolean; titulo: string; inicial?: { nombre: string; precio: number; tipo_iva?: number; alergenos?: string[] | string };
+  onOk: (nombre: string, precio: number, tipoIva: number, alergenos: string[]) => void; onCerrar: () => void;
 }) {
   const [nombre, setNombre] = useState("");
   const [precio, setPrecio] = useState("");
   const [iva, setIva] = useState(10);
+  const [alergenos, setAlergenos] = useState<string[]>([]);
   useEffect(() => {
     if (abierto) {
       setNombre(inicial?.nombre ?? "");
       setPrecio(inicial ? String(inicial.precio) : "");
       setIva(inicial?.tipo_iva ?? 10);
+      const guardados = inicial?.alergenos;
+      try { setAlergenos(typeof guardados === "string" ? JSON.parse(guardados) : guardados ?? []); } catch { setAlergenos([]); }
     }
   }, [abierto, inicial]);
   const valido = nombre && !isNaN(parseFloat(precio));
@@ -237,7 +245,17 @@ function FormProducto({ abierto, titulo, inicial, onOk, onCerrar }: {
             facturas a empresa; el precio de carta es siempre con IVA incluido.
           </p>
         </div>
-        <Button disabled={!valido} onClick={() => onOk(nombre, parseFloat(precio), iva)}>Guardar</Button>
+        <fieldset className="flex flex-col gap-2">
+          <legend className="text-sm font-medium">Alérgenos declarados</legend>
+          <p className="text-xs text-muted-foreground">Marca los presentes en el plato y contrasta con fichas de proveedor. La receta final también debe considerar extras, contaminación cruzada y trazas; el restaurante es responsable de verificar lo que informa.</p>
+          <div className="grid grid-cols-2 gap-2">
+            {ALERGENOS.map((a) => <label key={a} className="flex items-center gap-2 text-sm capitalize">
+              <input type="checkbox" checked={alergenos.includes(a)} onChange={(e) => setAlergenos((actuales) => e.target.checked ? [...actuales, a] : actuales.filter((x) => x !== a))} />
+              {a.replace("_", " ")}
+            </label>)}
+          </div>
+        </fieldset>
+        <Button disabled={!valido} onClick={() => onOk(nombre, parseFloat(precio), iva, alergenos)}>Guardar</Button>
       </div>
     </Dialog>
   );

@@ -14,7 +14,13 @@ DB_PATH=/var/lib/comandas/local.sqlite DESTINO_BACKUP=/var/backups/comandas \
 
 Usa el backup de SQLite (coherente aunque haya camareros cobrando), comprueba
 `integrity_check`, copia también `token.secret` (la clave de las sesiones) y
-borra las copias de más de 30 días. La facturación no se purga.
+conserva las últimas 30 copias. La facturación no se purga.
+
+La ruta predeterminada `backups` está junto a la aplicación y no protege frente
+a robo, incendio o fallo del disco. Configura `DESTINO_BACKUP` en un volumen
+externo con acceso restringido o en un destino remoto cifrado; no guardes la
+única copia en el propio Raspberry. Para obligaciones de privacidad y control de
+acceso, consulta [PRIVACIDAD.md](PRIVACIDAD.md).
 
 ## Instalar en un Raspberry nuevo
 

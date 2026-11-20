@@ -136,7 +136,8 @@ CREATE TABLE IF NOT EXISTS productos (
   -- 21% bebidas alcohólicas. El precio de carta SIEMPRE es con IVA
   -- incluido (obligatorio de cara al consumidor), así que la base se
   -- calcula hacia atrás: base = precio / (1 + tipo/100).
-  tipo_iva REAL NOT NULL DEFAULT 10
+  tipo_iva REAL NOT NULL DEFAULT 10,
+  alergenos TEXT NOT NULL DEFAULT '[]'
 );
 
 -- ---------------------------------------------------------------------------
@@ -222,6 +223,40 @@ CREATE TABLE IF NOT EXISTS turnos (
   cerrado_en TEXT,
   caja_inicial REAL NOT NULL DEFAULT 0,
   caja_final REAL
+);
+
+-- Entradas y retiradas manuales de efectivo para cuadrar caja con trazabilidad.
+CREATE TABLE IF NOT EXISTS movimientos_caja (
+  id TEXT PRIMARY KEY,
+  restaurante_id TEXT NOT NULL,
+  turno_id TEXT NOT NULL REFERENCES turnos(id),
+  usuario_id TEXT NOT NULL REFERENCES usuarios(id),
+  tipo TEXT NOT NULL CHECK (tipo IN ('ingreso','retirada')),
+  importe REAL NOT NULL CHECK (importe > 0),
+  motivo TEXT NOT NULL,
+  creado_en TEXT NOT NULL
+);
+
+-- Inventario de existencias con ajustes manuales. No descuenta recetas al vender.
+CREATE TABLE IF NOT EXISTS inventario_items (
+  id TEXT PRIMARY KEY,
+  restaurante_id TEXT NOT NULL,
+  nombre TEXT NOT NULL,
+  unidad TEXT NOT NULL,
+  stock_actual REAL NOT NULL DEFAULT 0 CHECK (stock_actual >= 0),
+  stock_minimo REAL NOT NULL DEFAULT 0 CHECK (stock_minimo >= 0),
+  activo INTEGER NOT NULL DEFAULT 1,
+  creado_en TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS inventario_movimientos (
+  id TEXT PRIMARY KEY,
+  restaurante_id TEXT NOT NULL,
+  item_id TEXT NOT NULL REFERENCES inventario_items(id),
+  usuario_id TEXT NOT NULL REFERENCES usuarios(id),
+  tipo TEXT NOT NULL CHECK (tipo IN ('entrada','salida')),
+  cantidad REAL NOT NULL CHECK (cantidad > 0),
+  motivo TEXT NOT NULL,
+  creado_en TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS comandas (
